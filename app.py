@@ -326,34 +326,46 @@ def paso2():
         )
 
     st.divider()
-    st.subheader("📅 Filtro de Fechas para Alertas (Opcional)")
-    st.caption("Selecciona una fecha de inicio y automáticamente se filtrarán las alertas hasta el final de ese mes")
-    st.caption("Este filtro SOLO afecta los archivos Excel de alertas, NO el CSV principal")
+    st.subheader("📅 Filtro de Fechas (Opcional)")
+    st.caption("**Alertas (Excel):** Fecha inicio → automático hasta fin de mes | **CSV principal:** Rango personalizado")
 
-    fecha_inicio_alertas = st.date_input(
-        "📅 Fecha de Inicio del Mes",
-        value=None,
-        format="DD/MM/YYYY",
-        key="fecha_inicio_alertas_paso2",
-        help="Las alertas se filtrarán desde esta fecha hasta el final del mes"
-    )
+    col_fecha1, col_fecha2 = st.columns(2)
 
-    # Calcular automáticamente el fin de mes
+    with col_fecha1:
+        fecha_inicio_alertas = st.date_input(
+            "📅 Fecha Inicio",
+            value=None,
+            format="DD/MM/YYYY",
+            key="fecha_inicio_alertas_paso2",
+            help="Fecha de inicio para filtrar"
+        )
+
+    with col_fecha2:
+        fecha_fin_csv = st.date_input(
+            "📅 Fecha Fin (CSV principal)",
+            value=None,
+            format="DD/MM/YYYY",
+            key="fecha_fin_csv_paso2",
+            help="Fecha fin para filtrar el CSV principal (opcional)"
+        )
+
+    # Calcular automáticamente el fin de mes PARA ALERTAS
     fecha_fin_alertas = None
     if fecha_inicio_alertas is not None:
-        # Importar calendar para obtener el último día del mes
         import calendar
-        ultimo_dia = calendar.monthrange(fecha_inicio_alertas.year, fecha_inicio_alertas.month)[1]
         from datetime import date
+        ultimo_dia = calendar.monthrange(fecha_inicio_alertas.year, fecha_inicio_alertas.month)[1]
         fecha_fin_alertas = date(fecha_inicio_alertas.year, fecha_inicio_alertas.month, ultimo_dia)
 
-        st.success(f"✅ Filtro activado: {fecha_inicio_alertas.strftime('%d/%m/%Y')} hasta {fecha_fin_alertas.strftime('%d/%m/%Y')} (fin del mes)")
+        st.success(f"✅ **Alertas (Excel):** {fecha_inicio_alertas.strftime('%d/%m/%Y')} → {fecha_fin_alertas.strftime('%d/%m/%Y')} (fin de mes automático)")
+
+    # Mostrar info del CSV principal si hay fecha fin
+    if fecha_inicio_alertas is not None and fecha_fin_csv is not None:
+        st.info(f"📊 **CSV principal:** Se filtrará entre {fecha_inicio_alertas.strftime('%d/%m/%Y')} y {fecha_fin_csv.strftime('%d/%m/%Y')}")
+    elif fecha_inicio_alertas is not None and fecha_fin_csv is None:
+        st.warning("⚠️ **CSV principal:** Se guardará completo SIN filtrar (no hay fecha fin)")
 
     usar_filtro_alertas = fecha_inicio_alertas is not None and fecha_fin_alertas is not None
-
-    if usar_filtro_alertas:
-        st.info(f"📊 Los archivos Excel de alertas se filtrarán entre {fecha_inicio_alertas.strftime('%d/%m/%Y')} y {fecha_fin_alertas.strftime('%d/%m/%Y')}")
-        st.info("✅ El archivo CSV principal se guardará completo SIN filtrar")
 
     if csv_paso1 and excel_personal:
         st.divider()
@@ -502,36 +514,65 @@ def paso2():
                         lambda r: "Concepto Si Aplica" if r['external_name_label'] == "Lic Jurado Votación" and r['calendar_days'] <= 1 
                         else "Concepto No Aplica", axis=1)
                     
-                    # Guardar archivo principal (SIEMPRE SIN FILTRAR)
+                    # Guardar archivo principal COMPLETO (SIEMPRE SIN FILTRAR)
                     archivo_principal = os.path.join(temp_dir, "relacion_laboral_con_validaciones.csv")
                     df.to_csv(archivo_principal, index=False, encoding='utf-8-sig')
 
                     archivos_generados = [archivo_principal]
 
                     # ============================================================================
-                    # APLICAR FILTRO DE FECHAS SOLO PARA ALERTAS
+                    # OPCIÓN 1: FILTRAR CSV PRINCIPAL SI HAY FECHA FIN
+                    # ============================================================================
+                    if fecha_inicio_alertas is not None and fecha_fin_csv is not None:
+                        st.info(f"🔍 Filtrando CSV principal: {fecha_inicio_alertas.strftime('%d/%m/%Y')} → {fecha_fin_csv.strftime('%d/%m/%Y')}")
+
+                        df_csv_filtrado = df.copy()
+                        df_csv_filtrado['start_date'] = pd.to_datetime(df_csv_filtrado['start_date'], errors='coerce')
+                        df_csv_filtrado['end_date'] = pd.to_datetime(df_csv_filtrado['end_date'], errors='coerce')
+
+                        fecha_inicio_dt = pd.to_datetime(fecha_inicio_alertas)
+                        fecha_fin_csv_dt = pd.to_datetime(fecha_fin_csv)
+
+                        df_csv_filtrado = df_csv_filtrado[
+                            (df_csv_filtrado['start_date'] >= fecha_inicio_dt) &
+                            (df_csv_filtrado['end_date'] <= fecha_fin_csv_dt)
+                        ].copy()
+
+                        # Convertir fechas de vuelta
+                        df_csv_filtrado['start_date'] = df_csv_filtrado['start_date'].dt.strftime('%d/%m/%Y')
+                        df_csv_filtrado['end_date'] = df_csv_filtrado['end_date'].dt.strftime('%d/%m/%Y')
+
+                        # Guardar CSV filtrado
+                        archivo_csv_filtrado = os.path.join(temp_dir, "relacion_laboral_FILTRADO.csv")
+                        df_csv_filtrado.to_csv(archivo_csv_filtrado, index=False, encoding='utf-8-sig')
+                        archivos_generados.append(archivo_csv_filtrado)
+
+                        st.success(f"✅ CSV filtrado: {len(df):,} → {len(df_csv_filtrado):,} registros")
+
+                    # ============================================================================
+                    # OPCIÓN 2: APLICAR FILTRO DE FECHAS PARA ALERTAS (FIN DE MES AUTOMÁTICO)
                     # ============================================================================
                     df_para_alertas = df.copy()
 
                     if usar_filtro_alertas:
-                        st.info(f"🔍 Aplicando filtro de fechas a las alertas: {fecha_inicio_alertas.strftime('%d/%m/%Y')} - {fecha_fin_alertas.strftime('%d/%m/%Y')}")
+                        st.info(f"🔍 Aplicando filtro a ALERTAS (fin de mes): {fecha_inicio_alertas.strftime('%d/%m/%Y')} → {fecha_fin_alertas.strftime('%d/%m/%Y')}")
 
                         # Convertir columnas de fecha a datetime para filtrar
                         df_para_alertas['start_date'] = pd.to_datetime(df_para_alertas['start_date'], errors='coerce')
                         df_para_alertas['end_date'] = pd.to_datetime(df_para_alertas['end_date'], errors='coerce')
 
                         fecha_inicio_dt = pd.to_datetime(fecha_inicio_alertas)
-                        fecha_fin_dt = pd.to_datetime(fecha_fin_alertas)
+                        fecha_fin_alertas_dt = pd.to_datetime(fecha_fin_alertas)
 
-                        # Filtrar por rango de fechas
+                        # Filtrar por rango de fechas (ALERTAS: fin de mes automático)
                         df_para_alertas = df_para_alertas[
                             (df_para_alertas['start_date'] >= fecha_inicio_dt) &
-                            (df_para_alertas['end_date'] <= fecha_fin_dt)
+                            (df_para_alertas['end_date'] <= fecha_fin_alertas_dt)
                         ].copy()
 
                         registros_antes = len(df)
                         registros_despues = len(df_para_alertas)
-                        st.success(f"✅ Filtro aplicado: {registros_antes:,} → {registros_despues:,} registros para alertas")
+                        st.success(f"✅ Filtro alertas aplicado: {registros_antes:,} → {registros_despues:,} registros")
 
                         # Convertir fechas de vuelta a formato DD/MM/AAAA
                         df_para_alertas['start_date'] = df_para_alertas['start_date'].dt.strftime('%d/%m/%Y')
