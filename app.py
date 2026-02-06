@@ -327,27 +327,27 @@ def paso2():
 
     st.divider()
     st.subheader("📅 Filtro de Fechas para Alertas (Opcional)")
-    st.caption("Formato: DD/MM/AAAA - Este filtro SOLO afecta los archivos Excel de alertas, NO el CSV principal")
+    st.caption("Selecciona una fecha de inicio y automáticamente se filtrarán las alertas hasta el final de ese mes")
+    st.caption("Este filtro SOLO afecta los archivos Excel de alertas, NO el CSV principal")
 
-    col_fecha1, col_fecha2 = st.columns(2)
+    fecha_inicio_alertas = st.date_input(
+        "📅 Fecha de Inicio del Mes",
+        value=None,
+        format="DD/MM/YYYY",
+        key="fecha_inicio_alertas_paso2",
+        help="Las alertas se filtrarán desde esta fecha hasta el final del mes"
+    )
 
-    with col_fecha1:
-        fecha_inicio_alertas = st.date_input(
-            "Fecha Inicio",
-            value=None,
-            format="DD/MM/YYYY",
-            key="fecha_inicio_alertas_paso2",
-            help="Filtra alertas desde esta fecha (start_date)"
-        )
+    # Calcular automáticamente el fin de mes
+    fecha_fin_alertas = None
+    if fecha_inicio_alertas is not None:
+        # Importar calendar para obtener el último día del mes
+        import calendar
+        ultimo_dia = calendar.monthrange(fecha_inicio_alertas.year, fecha_inicio_alertas.month)[1]
+        from datetime import date
+        fecha_fin_alertas = date(fecha_inicio_alertas.year, fecha_inicio_alertas.month, ultimo_dia)
 
-    with col_fecha2:
-        fecha_fin_alertas = st.date_input(
-            "Fecha Fin",
-            value=None,
-            format="DD/MM/YYYY",
-            key="fecha_fin_alertas_paso2",
-            help="Filtra alertas hasta esta fecha (end_date)"
-        )
+        st.success(f"✅ Filtro activado: {fecha_inicio_alertas.strftime('%d/%m/%Y')} hasta {fecha_fin_alertas.strftime('%d/%m/%Y')} (fin del mes)")
 
     usar_filtro_alertas = fecha_inicio_alertas is not None and fecha_fin_alertas is not None
 
