@@ -550,12 +550,12 @@ def paso2():
                         st.success(f"✅ CSV filtrado: {len(df):,} → {len(df_csv_filtrado):,} registros")
 
                     # ============================================================================
-                    # OPCIÓN 2: APLICAR FILTRO DE FECHAS PARA ALERTAS (FIN DE MES AUTOMÁTICO)
+                    # OPCIÓN 2: APLICAR FILTRO DE FECHAS PARA ALERTAS (SOLO START_DATE EN EL MES)
                     # ============================================================================
                     df_para_alertas = df.copy()
 
                     if usar_filtro_alertas:
-                        st.info(f"🔍 Aplicando filtro a ALERTAS (fin de mes): {fecha_inicio_alertas.strftime('%d/%m/%Y')} → {fecha_fin_alertas.strftime('%d/%m/%Y')}")
+                        st.info(f"🔍 Aplicando filtro a ALERTAS (solo start_date): {fecha_inicio_alertas.strftime('%d/%m/%Y')} → {fecha_fin_alertas.strftime('%d/%m/%Y')}")
 
                         # Convertir columnas de fecha a datetime para filtrar
                         df_para_alertas['start_date'] = pd.to_datetime(df_para_alertas['start_date'], errors='coerce')
@@ -564,15 +564,16 @@ def paso2():
                         fecha_inicio_dt = pd.to_datetime(fecha_inicio_alertas)
                         fecha_fin_alertas_dt = pd.to_datetime(fecha_fin_alertas)
 
-                        # Filtrar por rango de fechas (ALERTAS: fin de mes automático)
+                        # CRÍTICO: Filtrar SOLO por start_date (no importa end_date)
+                        # Si start_date está en enero, traer el registro aunque end_date sea febrero o después
                         df_para_alertas = df_para_alertas[
                             (df_para_alertas['start_date'] >= fecha_inicio_dt) &
-                            (df_para_alertas['end_date'] <= fecha_fin_alertas_dt)
+                            (df_para_alertas['start_date'] <= fecha_fin_alertas_dt)
                         ].copy()
 
                         registros_antes = len(df)
                         registros_despues = len(df_para_alertas)
-                        st.success(f"✅ Filtro alertas aplicado: {registros_antes:,} → {registros_despues:,} registros")
+                        st.success(f"✅ Filtro alertas aplicado (solo start_date en el mes): {registros_antes:,} → {registros_despues:,} registros")
 
                         # Convertir fechas de vuelta a formato DD/MM/AAAA
                         df_para_alertas['start_date'] = df_para_alertas['start_date'].dt.strftime('%d/%m/%Y')
