@@ -1,0 +1,604 @@
+"""
+Auditoría de Ausentismos - Parte 4
+Análisis de Registros Únicos y Ventana de 30 Días con Ponderación
+
+Filtro de Registros Únicos por Códigos de Ausentismo
+Extrae registros únicos por id_personal filtrados por códigos específicos
+Luego aplica análisis de 30 días con ponderación específica (25% por columna)
+"""
+
+import pandas as pd
+import numpy as np
+import os
+
+# ============================================================================
+# CONFIGURACIÓN GLOBAL
+# ============================================================================
+
+# Rutas (se configurarán desde app.py)
+ruta_entrada = ""
+directorio_salida = ""
+ruta_salida_unicos = ""
+ruta_salida_30dias = ""
+
+# Códigos a excluir de registros únicos (con el 215)
+CODIGOS_EXCLUIR_UNICOS = [203, 202, 216, 210, 220, 201, 200, 383, 215]
+
+# Códigos a incluir en reporte 30 días (CON el 215)
+CODIGOS_INCLUIR_30DIAS = [203, 202, 215, 216, 210, 220, 201, 200, 383]
+
+# PONDERACIONES: 25% cada columna
+COLUMNAS_PONDERADAS = {
+    'GRUPO': 0.25,
+    'Clasificación Sistemas JMC': 0.25,
+    'SEGMENTO': 0.25,
+    'Clasificación Partes JMC': 0.25
+}
+
+# Ventana de días para análisis
+VENTANA_DIAS = 30
+
+# Ruta al archivo de códigos en el repositorio
+RUTA_CODIGOS_CSV = "datos_numericos.csv"
+
+# ============================================================================
+# FUNCIÓN PRINCIPAL
+# ============================================================================
+
+def procesar_analisis_completo():
+    """
+    Ejecuta el análisis completo:
+    1. Filtra registros únicos por códigos
+    2. Analiza ventana de 30 días con ponderación
+
+    Returns:
+        tuple: (df_unicos, df_reporte_30dias) o (None, None) si hay error
+    """
+
+    print("=" * 80)
+    print("PROCESAMIENTO DE REGISTROS ÚNICOS Y ANÁLISIS 30 DÍAS")
+    print("=" * 80)
+
+    # DEBUG: Verificar configuración inicial
+    print("\n🔍 DEBUG - Configuración inicial:")
+    print(f"  - ruta_entrada: {ruta_entrada}")
+    print(f"  - directorio_salida: {directorio_salida}")
+    print(f"  - ruta_salida_unicos: {ruta_salida_unicos}")
+    print(f"  - ruta_salida_30dias: {ruta_salida_30dias}")
+    print(f"  - RUTA_CODIGOS_CSV: {RUTA_CODIGOS_CSV}")
+
+    try:
+        # ============================================================================
+        # PASO 1: FILTRAR Y OBTENER REGISTROS ÚNICOS
+        # ============================================================================
+        print("\n1. Procesando registros únicos...")
+
+        # DEBUG: Verificar archivo de entrada
+        if not ruta_entrada:
+            raise ValueError("❌ ruta_entrada no está configurada")
+        if not os.path.exists(ruta_entrada):
+            raise FileNotFoundError(f"❌ No se encuentra el archivo: {ruta_entrada}")
+
+        print(f"   📂 Leyendo archivo: {os.path.basename(ruta_entrada)}")
+        df = pd.read_csv(ruta_entrada, encoding='utf-8-sig')
+        print(f"   ✅ Registros totales: {len(df):,}")
+        print(f"   📋 Columnas encontradas: {len(df.columns)}")
+
+        # DEBUG: Mostrar primeras columnas
+        print(f"   🔍 Primeras 5 columnas: {list(df.columns[:5])}")
+        print(f"   🔍 Todas las columnas ({len(df.columns)}): {list(df.columns)}")
+
+        # COMPATIBILIDAD: Verificar si existe fse_fechas o Final Salario enfer.
+        tiene_fse_fechas = 'fse_fechas' in df.columns
+        tiene_final_salario = 'Final Salario enfer.' in df.columns
+        print(f"   🔍 Columna 'fse_fechas': {'SÍ' if tiene_fse_fechas else 'NO'}")
+        print(f"   🔍 Columna 'Final Salario enfer.': {'SÍ' if tiene_final_salario else 'NO'}")
+
+        # FILTRAR PARA REGISTROS ÚNICOS: EXCLUIR los códigos especificados
+        if 'homologacion_clase_de_ausentismo_ssf_vs_sap' not in df.columns:
+            raise ValueError(f"❌ ERROR: Columna 'homologacion_clase_de_ausentismo_ssf_vs_sap' NO EXISTE en el archivo. Columnas disponibles: {list(df.columns)}")
+
+        df_filtrado_unicos = df[~df['homologacion_clase_de_ausentismo_ssf_vs_sap'].isin(CODIGOS_EXCLUIR_UNICOS)]
+        print(f"   Registros excluyendo códigos {CODIGOS_EXCLUIR_UNICOS}: {len(df_filtrado_unicos):,}")
+
+        # Validar que existan las columnas CRÍTICAS requeridas
+        columnas_criticas = ['id_personal', 'last_approval_status_date', 'start_date',
+                             'descripcion_general_external_code']
+        columnas_faltantes = [col for col in columnas_criticas if col not in df.columns]
+        if columnas_faltantes:
+            print(f"❌ ERROR CRÍTICO: Faltan columnas OBLIGATORIAS: {columnas_faltantes}")
+            print(f"   Columnas disponibles: {list(df.columns)}")
+            return None, None
+
+        # Verificar columnas opcionales y advertir si faltan
+        columnas_opcionales = ['external_name_label', 'cie10_descripcion', 'end_date']
+        for col in columnas_opcionales:
+            if col not in df.columns:
+                print(f"   ⚠️ ADVERTENCIA: Columna opcional '{col}' NO existe (se usará valor por defecto)")
+            else:
+                print(f"   ✅ Columna opcional '{col}' encontrada")
+
+        # Convertir fechas a datetime para ordenamiento correcto
+        df_filtrado_unicos['last_approval_status_date_dt'] = pd.to_datetime(
+            df_filtrado_unicos['last_approval_status_date'],
+            format='%d/%m/%Y',
+            errors='coerce'
+        )
+        df_filtrado_unicos['start_date_dt'] = pd.to_datetime(
+            df_filtrado_unicos['start_date'],
+            format='%d/%m/%Y',
+            errors='coerce'
+        )
+
+        # Ordenar por: id_personal, last_approval_status_date (desc), start_date (desc)
+        # Así el registro con la fecha más reciente en start_date quedará primero
+        df_filtrado_unicos = df_filtrado_unicos.sort_values(
+            by=['id_personal', 'last_approval_status_date_dt', 'start_date_dt'],
+            ascending=[True, False, False]
+        )
+
+        # Tomar el primer registro de cada id_personal (que ahora es el más reciente)
+        df_unicos = df_filtrado_unicos.drop_duplicates(subset=['id_personal'], keep='first')
+
+        # Eliminar columnas auxiliares de datetime
+        df_unicos = df_unicos.drop(['last_approval_status_date_dt', 'start_date_dt'], axis=1)
+
+        print(f"   Registros únicos (SIN códigos filtrados): {len(df_unicos):,}")
+        print(f"   → Criterio: Última last_approval_status_date y start_date más reciente")
+
+        df_unicos.to_csv(ruta_salida_unicos, index=False, encoding='utf-8-sig', date_format='%d/%m/%Y')
+        print(f"✅ Guardado: {os.path.basename(ruta_salida_unicos)}")
+
+        # FILTRAR PARA REPORTE 30 DÍAS: INCLUIR SOLO los códigos especificados
+        df_filtrado_30dias = df[df['homologacion_clase_de_ausentismo_ssf_vs_sap'].isin(CODIGOS_INCLUIR_30DIAS)]
+        print(f"   Registros CON códigos {CODIGOS_INCLUIR_30DIAS}: {len(df_filtrado_30dias):,}")
+        
+        df_filtrado_30dias_unicos = df_filtrado_30dias.drop_duplicates(subset=['id_personal'], keep='first')
+        print(f"   IDs únicos para reporte 30 días: {len(df_filtrado_30dias_unicos):,}")
+        
+        # ============================================================================
+        # PASO 2: CARGAR MATRIZ DE CÓDIGOS
+        # ============================================================================
+        print("\n2. Cargando matriz de códigos CIE-10...")
+        
+        # Verificar si existe el archivo en el repositorio
+        if not os.path.exists(RUTA_CODIGOS_CSV):
+            print(f"❌ ERROR: No se encontró el archivo {RUTA_CODIGOS_CSV}")
+            return None, None
+        
+        df_codigos = pd.read_csv(RUTA_CODIGOS_CSV, encoding='utf-8-sig')
+        
+        # Eliminar columna porcentaje_relacion si existe
+        if 'porcentaje_relacion' in df_codigos.columns:
+            df_codigos = df_codigos.drop('porcentaje_relacion', axis=1)
+        
+        print(f"✅ Columnas disponibles en matriz: {list(df_codigos.columns)}")
+        
+        # Verificar que las columnas ponderadas existen
+        columnas_faltantes = [col for col in COLUMNAS_PONDERADAS.keys() if col not in df_codigos.columns]
+        if columnas_faltantes:
+            print(f"❌ ERROR: Faltan columnas en la matriz: {columnas_faltantes}")
+            return None, None
+        
+        # ============================================================================
+        # PASO 3: PREPARAR DATOS PARA ANÁLISIS 30 DÍAS
+        # ============================================================================
+        print("\n3. Preparando datos para análisis 30 días...")
+        
+        # Cargar ausentismos completos
+        df_ausentismos = pd.read_csv(ruta_entrada, encoding='utf-8-sig')
+
+        # COMPATIBILIDAD: Agregar columnas opcionales si no existen
+        if 'external_name_label' not in df_ausentismos.columns:
+            print("   ⚠️ Columna 'external_name_label' no existe, agregando columna vacía")
+            df_ausentismos['external_name_label'] = 'N/A'
+
+        if 'cie10_descripcion' not in df_ausentismos.columns:
+            print("   ⚠️ Columna 'cie10_descripcion' no existe, agregando columna vacía")
+            df_ausentismos['cie10_descripcion'] = ''
+
+        if 'end_date' not in df_ausentismos.columns:
+            print("   ⚠️ Columna 'end_date' no existe, agregando columna vacía")
+            df_ausentismos['end_date'] = ''
+
+        # Obtener solo los IDs únicos del filtro CON CÓDIGOS (para reporte 30 días)
+        ids_filtrados = df_filtrado_30dias_unicos['id_personal'].unique()
+
+        # DEBUG: Comparar IDs antes y después del filtro
+        ids_originales_set = set(ids_filtrados)
+        ids_en_ausentismos = set(df_ausentismos[df_ausentismos['id_personal'].isin(ids_filtrados)]['id_personal'].unique())
+        ids_faltantes = ids_originales_set - ids_en_ausentismos
+
+        print(f"\n📊 DEBUG - Análisis de IDs:")
+        print(f"   • IDs en lista original: {len(ids_filtrados):,}")
+        print(f"   • IDs encontrados en df_ausentismos: {len(ids_en_ausentismos):,}")
+        print(f"   • IDs que NO se encontrarán (sin datos): {len(ids_faltantes):,}")
+
+        if len(ids_faltantes) > 0:
+            print(f"\n⚠️ ADVERTENCIA: {len(ids_faltantes)} IDs no tienen datos en df_ausentismos")
+            print(f"   Esto significa que estos IDs:")
+            print(f"   1. Estaban en df_filtrado_30dias_unicos (tenían códigos filtrados)")
+            print(f"   2. PERO no están en el CSV completo actual")
+            print(f"   3. Probablemente fueron eliminados en Paso 2 o Paso 3")
+            print(f"\n   Primeros 10 IDs faltantes:")
+            for i, id_faltante in enumerate(list(ids_faltantes)[:10], 1):
+                print(f"      {i}. ID: {id_faltante}")
+
+        df_ausentismos = df_ausentismos[df_ausentismos['id_personal'].isin(ids_filtrados)]
+        
+        print(f"✅ IDs a procesar: {len(ids_filtrados):,}")
+        print(f"✅ Ponderación configurada:")
+        for col, peso in COLUMNAS_PONDERADAS.items():
+            print(f"   • {col}: {peso*100:.0f}%")
+
+        # DEBUG: Mostrar formato de fechas antes de convertir
+        print(f"\n📅 DEBUG - Formato de fechas:")
+        print(f"   • last_approval_status_date ejemplo: {df_ausentismos['last_approval_status_date'].iloc[0] if len(df_ausentismos) > 0 else 'N/A'}")
+        print(f"   • start_date ejemplo: {df_ausentismos['start_date'].iloc[0] if len(df_ausentismos) > 0 else 'N/A'}")
+
+        # Convertir fechas - FLEXIBLE: intenta varios formatos
+        def convertir_fecha_flexible(serie):
+            """Convierte fechas intentando varios formatos"""
+            # Primero intentar formato DD/MM/YYYY
+            resultado = pd.to_datetime(serie, format='%d/%m/%Y', errors='coerce')
+
+            # Si hay muchos NaT, intentar formato YYYY-MM-DD
+            nulos = resultado.isna().sum()
+            if nulos > len(serie) * 0.5:  # Más del 50% nulos
+                resultado_alt = pd.to_datetime(serie, format='%Y-%m-%d', errors='coerce')
+                if resultado_alt.isna().sum() < nulos:
+                    return resultado_alt
+
+            # Si aún hay muchos nulos, intentar inferir automáticamente
+            if resultado.isna().sum() > len(serie) * 0.5:
+                resultado_auto = pd.to_datetime(serie, dayfirst=True, errors='coerce')
+                if resultado_auto.isna().sum() < resultado.isna().sum():
+                    return resultado_auto
+
+            return resultado
+
+        df_ausentismos['last_approval_status_date'] = convertir_fecha_flexible(df_ausentismos['last_approval_status_date'])
+        df_ausentismos['start_date'] = convertir_fecha_flexible(df_ausentismos['start_date'])
+        df_ausentismos['end_date'] = convertir_fecha_flexible(df_ausentismos['end_date'])
+
+        # DEBUG: Mostrar cuántas fechas se convirtieron correctamente
+        print(f"   • last_approval_status_date válidas: {df_ausentismos['last_approval_status_date'].notna().sum():,}")
+        print(f"   • start_date válidas: {df_ausentismos['start_date'].notna().sum():,}")
+
+        # Limpiar códigos
+        df_ausentismos['descripcion_general_external_code'] = (
+            df_ausentismos['descripcion_general_external_code'].astype(str).str.strip()
+        )
+
+        # Eliminar registros sin datos válidos (solo fechas, no descripcion_general_external_code)
+        registros_antes = len(df_ausentismos)
+        df_ausentismos = df_ausentismos.dropna(
+            subset=['last_approval_status_date', 'start_date']
+        )
+        registros_despues = len(df_ausentismos)
+
+        if registros_antes != registros_despues:
+            print(f"   ⚠️ Se eliminaron {registros_antes - registros_despues} registros con fechas inválidas")
+
+        print(f"✅ Registros válidos para análisis: {len(df_ausentismos):,}")
+        
+        # ============================================================================
+        # PASO 4: CREAR DICCIONARIO DE CÓDIGOS
+        # ============================================================================
+        print("\n4. Creando diccionario de códigos...")
+        
+        codigo_a_valores = {}
+        for idx, row in df_codigos.iterrows():
+            codigo = row['Código']
+            valores = {col: row[col] for col in COLUMNAS_PONDERADAS.keys()}
+            codigo_a_valores[codigo] = valores
+        
+        print(f"✅ {len(codigo_a_valores)} códigos en diccionario")
+        
+        # ============================================================================
+        # PASO 5: PROCESAR CADA ID_PERSONAL
+        # ============================================================================
+        print("\n5. Procesando análisis de 30 días...")
+        
+        resultados = []
+        
+        for contador, id_pers in enumerate(ids_filtrados, 1):
+            # Obtener datos de este ID
+            datos_id = df_ausentismos[df_ausentismos['id_personal'] == id_pers].copy()
+
+            # PROTECCIÓN: Verificar que haya datos para este ID
+            if len(datos_id) == 0:
+                print(f"  ⚠️ SALTANDO ID {id_pers} (#{contador}/{len(ids_filtrados)}): Sin datos")
+                continue
+
+            # PRIORIDAD 1: Buscar el start_date más reciente
+            # PRIORIDAD 2: Si hay empate, desempatar por last_approval_status_date más reciente
+            datos_id_ordenado = datos_id.sort_values(
+                by=['start_date', 'last_approval_status_date'],
+                ascending=[False, False]  # Ambos descendentes (más reciente primero)
+            )
+
+            # PROTECCIÓN: Verificar que datos_id_ordenado no esté vacío
+            if len(datos_id_ordenado) == 0:
+                print(f"  ⚠️ SALTANDO ID {id_pers} (#{contador}/{len(ids_filtrados)}): DataFrame vacío tras ordenar")
+                continue
+
+            # Tomar el primer registro (start_date más reciente)
+            registro_ultimo = datos_id_ordenado.iloc[0]
+
+            fecha_aprobacion_maxima = registro_ultimo['last_approval_status_date']
+            codigo_ultima_fecha = registro_ultimo['descripcion_general_external_code']
+            start_date_ultimo = registro_ultimo['start_date']
+            end_date_ultimo = registro_ultimo['end_date']
+            # CORRECCIÓN: pandas Series no tiene método .get(), usar in index
+            if 'external_name_label' in registro_ultimo.index:
+                external_label_ultimo = registro_ultimo['external_name_label']
+            else:
+                external_label_ultimo = 'N/A'
+            
+            # Calcular fecha límite (30 días antes del start_date)
+            fecha_limite = start_date_ultimo - pd.Timedelta(days=VENTANA_DIAS)
+            
+            # Filtrar registros dentro de la ventana de 30 días
+            datos_filtrados = datos_id[
+                (datos_id['start_date'] >= fecha_limite) & 
+                (datos_id['start_date'] <= start_date_ultimo)
+            ].copy()
+            
+            # Calcular días transcurridos
+            datos_filtrados['dias_transcurridos'] = (start_date_ultimo - datos_filtrados['start_date']).dt.days
+            
+            # Excluir el código que choca (el del registro más reciente)
+            datos_filtrados_sin_choque = datos_filtrados[
+                (datos_filtrados['descripcion_general_external_code'] != codigo_ultima_fecha) |
+                (datos_filtrados['start_date'] != start_date_ultimo)
+            ].copy()
+
+            # ORDENAR por start_date de menor a mayor (más antigua primero)
+            datos_filtrados_sin_choque = datos_filtrados_sin_choque.sort_values('start_date', ascending=True)
+
+            # Calcular duración en días del código que choca
+            if pd.notna(end_date_ultimo) and pd.notna(start_date_ultimo):
+                duracion_dias = (end_date_ultimo - start_date_ultimo).days + 1
+            else:
+                duracion_dias = 0
+
+            # Crear tipo_concepto (el código que choca con todos)
+            tipo_concepto = f"{codigo_ultima_fecha}(start:{start_date_ultimo.strftime('%d/%m/%Y')},dias:{duracion_dias})({external_label_ultimo})"
+
+            # Si no hay datos para comparar
+            if len(datos_filtrados_sin_choque) == 0:
+                resultados.append({
+                    'id_personal': id_pers,
+                    'fecha_ultima': fecha_aprobacion_maxima,  # Mantener como datetime
+                    'start_date': start_date_ultimo,  # Mantener como datetime
+                    'end_date': end_date_ultimo if pd.notna(end_date_ultimo) else pd.NaT,  # Mantener como datetime
+                    'codigo_ultima_fecha': codigo_ultima_fecha,
+                    'tipo_concepto': tipo_concepto,
+                    'todos_codigos': '',
+                    'detalle_codigos_con_fechas': '',
+                    'cantidad_codigos': 0,
+                    'comparaciones_detalle': '',
+                    'porcentaje_relacion': 0.0,
+                    'cie10_descripcion': ''
+                })
+                continue
+            
+            # Verificar si el código que choca existe en la tabla
+            if codigo_ultima_fecha not in codigo_a_valores:
+                detalle_codigos = []
+                cie10_descripciones = []
+                
+                for idx, row in datos_filtrados_sin_choque.iterrows():
+                    cod = row['descripcion_general_external_code']
+                    sd = row['start_date'].strftime('%d/%m/%Y')
+                    dias = row['dias_transcurridos']
+                    # CORRECCIÓN: pandas Series no tiene método .get()
+                    external_label = row['external_name_label'] if 'external_name_label' in row.index else 'N/A'
+                    cie10_desc = row['cie10_descripcion'] if 'cie10_descripcion' in row.index else ''
+                    
+                    detalle_codigos.append(f"{cod}(start:{sd},dias:{dias})({external_label})")
+                    
+                    if pd.notna(cie10_desc) and cie10_desc != '':
+                        cie10_descripciones.append(f"({str(cie10_desc)})")
+                
+                todos_codigos = datos_filtrados_sin_choque['descripcion_general_external_code'].unique().tolist()
+
+                resultados.append({
+                    'id_personal': id_pers,
+                    'fecha_ultima': fecha_aprobacion_maxima,  # Mantener como datetime
+                    'start_date': start_date_ultimo,  # Mantener como datetime
+                    'end_date': end_date_ultimo if pd.notna(end_date_ultimo) else pd.NaT,  # Mantener como datetime
+                    'codigo_ultima_fecha': codigo_ultima_fecha,
+                    'tipo_concepto': tipo_concepto,
+                    'todos_codigos': ', '.join(todos_codigos),
+                    'detalle_codigos_con_fechas': ' | '.join(detalle_codigos),
+                    'cantidad_codigos': len(todos_codigos),
+                    'comparaciones_detalle': 'Código que choca no encontrado en tabla',
+                    'porcentaje_relacion': 0.0,
+                    'cie10_descripcion': '|'.join(cie10_descripciones)
+                })
+                continue
+            
+            # Procesar comparaciones con PONDERACIÓN
+            detalle_codigos = []
+            comparaciones_detalle = []
+            porcentajes = []
+            cie10_descripciones = []
+            valores_ultima = codigo_a_valores[codigo_ultima_fecha]
+            
+            for idx, row in datos_filtrados_sin_choque.iterrows():
+                cod = row['descripcion_general_external_code']
+                sd = row['start_date'].strftime('%d/%m/%Y')
+                dias = row['dias_transcurridos']
+                # CORRECCIÓN: pandas Series no tiene método .get()
+                external_label = row['external_name_label'] if 'external_name_label' in row.index else 'N/A'
+                cie10_desc = row['cie10_descripcion'] if 'cie10_descripcion' in row.index else ''
+
+                # Verificar si el código tiene caracteres especiales
+                # CORRECCIÓN: Verificar que cod no sea None y manejar casos especiales
+                cod_str = str(cod).strip() if cod is not None else ''
+                if not cod_str or '*' in cod_str or not cod_str.replace(' ', '').replace('.', '').isalnum():
+                    detalle_codigos.append(f"{cod}(start:{sd},dias:{dias},error_codigo)({external_label})")
+                    comparaciones_detalle.append(f"{cod}:error_codigo")
+                else:
+                    detalle_codigos.append(f"{cod}(start:{sd},dias:{dias})({external_label})")
+                    
+                    # Verificar si el código existe en el diccionario
+                    if cod in codigo_a_valores:
+                        valores_hist = codigo_a_valores[cod]
+                        
+                        # CALCULAR PORCENTAJE PONDERADO: 25% por cada columna
+                        porcentaje_total = 0.0
+                        
+                        for columna, peso in COLUMNAS_PONDERADAS.items():
+                            # Si coincide la columna, sumar el 25%
+                            if valores_ultima[columna] == valores_hist[columna]:
+                                porcentaje_total += (peso * 100)
+                        
+                        porcentajes.append(porcentaje_total)
+                        comparaciones_detalle.append(f"{cod}:{porcentaje_total:.1f}%")
+                    else:
+                        comparaciones_detalle.append(f"{cod}:N/A")
+                
+                # Agregar descripción CIE-10 si existe con formato |(DESCRIPCION)|
+                if pd.notna(cie10_desc) and cie10_desc != '':
+                    cie10_descripciones.append(f"({str(cie10_desc)})")
+            
+            # Crear strings de detalle
+            detalle_str = ' | '.join(detalle_codigos)
+            comparaciones_str = ' | '.join(comparaciones_detalle)
+            todos_codigos = datos_filtrados_sin_choque['descripcion_general_external_code'].unique().tolist()
+            
+            # Calcular promedio de porcentajes
+            porcentaje_promedio = np.mean(porcentajes) if porcentajes else 0.0
+
+            # Guardar resultado
+            resultados.append({
+                'id_personal': id_pers,
+                'fecha_ultima': fecha_aprobacion_maxima,  # Mantener como datetime
+                'start_date': start_date_ultimo,  # Mantener como datetime
+                'end_date': end_date_ultimo if pd.notna(end_date_ultimo) else pd.NaT,  # Mantener como datetime
+                'codigo_ultima_fecha': codigo_ultima_fecha,
+                'tipo_concepto': tipo_concepto,
+                'todos_codigos': ', '.join(todos_codigos),
+                'detalle_codigos_con_fechas': detalle_str,
+                'cantidad_codigos': len(todos_codigos),
+                'comparaciones_detalle': comparaciones_str,
+                'porcentaje_relacion': round(porcentaje_promedio, 2),
+                'cie10_descripcion': '|'.join(cie10_descripciones)
+            })
+            
+            # Mostrar progreso
+            if contador % 500 == 0:
+                print(f"  Procesados {contador}/{len(ids_filtrados)} IDs...")
+        
+        print(f"✅ Procesamiento completado")
+        
+        # ============================================================================
+        # PASO 6: GUARDAR REPORTE 30 DÍAS
+        # ============================================================================
+        print("\n6. Guardando reporte 30 días...")
+        
+        df_resultado = pd.DataFrame(resultados)
+        
+        # NOMBRES DE COLUMNAS CORRECTOS Y EN ESPAÑOL
+        columnas_orden = [
+            'id_personal',
+            'fecha_ultima',
+            'start_date',
+            'end_date',
+            'codigo_ultima_fecha',
+            'tipo_concepto',
+            'todos_codigos',
+            'detalle_codigos_con_fechas',
+            'cantidad_codigos',
+            'comparaciones_detalle',
+            'porcentaje_relacion',
+            'cie10_descripcion'
+        ]
+        
+        df_resultado = df_resultado[columnas_orden]
+        
+        # Guardar CSV con formato CORRECTO y fechas en DD/MM/YYYY
+        df_resultado.to_csv(
+            ruta_salida_30dias,
+            index=False,
+            sep=';',
+            encoding='utf-8-sig',
+            decimal=',',
+            date_format='%d/%m/%Y',  # Formato día/mes/año para fechas
+            quoting=1,
+            lineterminator='\n'
+        )
+        
+        print(f"✅ Guardado: {os.path.basename(ruta_salida_30dias)}")
+        
+        # ============================================================================
+        # PASO 7: ESTADÍSTICAS FINALES
+        # ============================================================================
+        print("\n" + "=" * 80)
+        print("RESUMEN FINAL")
+        print("=" * 80)
+        
+        print(f"\n📊 Archivos generados:")
+        print(f"  1. {os.path.basename(ruta_salida_unicos)}: {len(df_unicos):,} registros")
+        print(f"     → Registros únicos EXCLUYENDO códigos {CODIGOS_EXCLUIR_UNICOS}")
+        print(f"  2. {os.path.basename(ruta_salida_30dias)}: {len(df_resultado):,} registros")
+        print(f"     → Análisis 30 días SOLO con códigos {CODIGOS_INCLUIR_30DIAS}")
+        
+        print(f"\n📈 Estadísticas reporte 30 días:")
+        print(f"  IDs con códigos para comparar: {len(df_resultado[df_resultado['cantidad_codigos'] > 0]):,}")
+        print(f"  IDs sin códigos para comparar: {len(df_resultado[df_resultado['cantidad_codigos'] == 0]):,}")
+        print(f"  Porcentaje promedio: {df_resultado['porcentaje_relacion'].mean():.2f}%")
+        
+        print(f"\n💡 Ponderación aplicada:")
+        for col, peso in COLUMNAS_PONDERADAS.items():
+            print(f"  • {col}: {peso*100:.0f}%")
+        print(f"  → Total posible: 100% (si coinciden las 4 columnas)")
+        
+        print("\n✅ PROCESO COMPLETADO")
+        print("=" * 80)
+        
+        return df_unicos, df_resultado
+    
+    except Exception as e:
+        print("\n" + "=" * 80)
+        print("❌ ERROR CRÍTICO EN PROCESAMIENTO")
+        print("=" * 80)
+        print(f"\n🔴 Tipo de Error: {type(e).__name__}")
+        print(f"🔴 Mensaje: {str(e)}")
+        print("\n📍 TRACEBACK COMPLETO:")
+        print("-" * 80)
+        import traceback
+        traceback.print_exc()
+        print("-" * 80)
+        print("\n💡 INFORMACIÓN DE DEBUG:")
+        print(f"  - Archivo de entrada existe: {os.path.exists(ruta_entrada) if ruta_entrada else 'NO CONFIGURADO'}")
+        print(f"  - Archivo códigos existe: {os.path.exists(RUTA_CODIGOS_CSV)}")
+        print(f"  - Directorio salida: {directorio_salida if directorio_salida else 'NO CONFIGURADO'}")
+        print("=" * 80)
+        return None, None
+
+
+# ============================================================================
+# EJECUCIÓN DIRECTA (PARA PRUEBAS LOCALES)
+# ============================================================================
+
+if __name__ == "__main__":
+    # Configuración de ejemplo para ejecución local
+    ruta_entrada = r"C:\Users\jjbustos\Downloads\PASO_3_CIE10\ausentismos_completo_con_cie10.csv"
+    directorio_salida = r"C:\Users\jjbustos\Downloads\salida"
+    ruta_salida_unicos = os.path.join(directorio_salida, "Registros_unicos.csv")
+    ruta_salida_30dias = os.path.join(directorio_salida, "reporte_30_dias.csv")
+    
+    # Crear directorio de salida si no existe
+    os.makedirs(directorio_salida, exist_ok=True)
+    
+    # Ejecutar proceso
+    df_unicos, df_reporte = procesar_analisis_completo()
+    
+    if df_unicos is not None and df_reporte is not None:
+        print("\n✅ Archivos generados correctamente")
+    else:
+        print("\n❌ Error en el procesamiento")
