@@ -31,7 +31,7 @@ def guardar_csv_con_fechas(df, ruta_archivo):
     return ruta_archivo
 
 st.set_page_config(
-    page_title="Auditoría Ausentismos",
+    page_title="Auditoría Ausentismos Corrección",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -130,7 +130,7 @@ def crear_zip_desde_archivos(archivos_paths):
 def mostrar_header_principal():
     st.markdown("""
     <div class="main-header">
-        <h1>📊 Auditoría de Ausentismos</h1>
+        <h1>📊 Auditoría Ausentismos Corrección</h1>
         <p>Sistema Integrado de Gestión y Validación</p>
     </div>
     """, unsafe_allow_html=True)
