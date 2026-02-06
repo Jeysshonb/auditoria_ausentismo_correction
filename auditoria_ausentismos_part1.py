@@ -447,6 +447,31 @@ def procesar_archivo_ausentismos():
             df_excel_renamed = df_excel_renamed.drop(['codigo_sap_original'], axis=1)
         
         # ====================================================================
+        # PASO 2.8: FILTRAR CSV - SOLO PERSONAS QUE EXISTEN EN REPORTE 45
+        # ====================================================================
+        print("\n[PASO 2.8] Filtrando CSV - Solo personas que existen en Reporte 45...")
+
+        # Obtener IDs únicos del Excel (Reporte 45)
+        ids_excel = set(df_excel_renamed['ID personal'].astype(str).str.strip().unique())
+        print(f"   📊 IDs únicos en Reporte 45 (Excel): {len(ids_excel):,}")
+
+        # Filtrar CSV para mantener solo IDs que están en Excel
+        registros_csv_antes = len(df_csv_filtrado)
+        df_csv_filtrado['ID personal'] = df_csv_filtrado['ID personal'].astype(str).str.strip()
+        df_csv_filtrado = df_csv_filtrado[df_csv_filtrado['ID personal'].isin(ids_excel)].copy()
+        registros_csv_despues = len(df_csv_filtrado)
+        registros_eliminados = registros_csv_antes - registros_csv_despues
+
+        print(f"   ✓ CSV ANTES del filtro: {registros_csv_antes:,} registros")
+        print(f"   ✓ CSV DESPUÉS del filtro: {registros_csv_despues:,} registros")
+        print(f"   ✓ Registros eliminados (no están en Reporte 45): {registros_eliminados:,}")
+
+        if registros_csv_despues == 0:
+            print(f"   ⚠️ ADVERTENCIA: No hay coincidencias entre CSV y Excel por ID personal")
+            print(f"   📋 Primeros 5 IDs del CSV: {list(df_csv_filtrado['ID personal'].head())}")
+            print(f"   📋 Primeros 5 IDs del Excel: {list(ids_excel)[:5]}")
+
+        # ====================================================================
         # PASO 3: CONCATENAR CSV + EXCEL
         # ====================================================================
         print("\n[PASO 3] Concatenando CSV y Excel...")
@@ -458,7 +483,7 @@ def procesar_archivo_ausentismos():
 
         df_combinado = pd.concat([df_csv_filtrado, df_excel_renamed], ignore_index=True, sort=False)
         print(f"   ✓ Datos combinados: {df_combinado.shape[0]} filas totales")
-        print(f"   ✓ CSV: {df_csv_filtrado.shape[0]} filas")
+        print(f"   ✓ CSV FILTRADO: {df_csv_filtrado.shape[0]} filas")
         print(f"   ✓ Excel: {df_excel_renamed.shape[0]} filas")
 
         # Verificar si fse_fechas existe después del concat
