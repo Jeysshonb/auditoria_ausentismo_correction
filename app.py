@@ -1116,7 +1116,7 @@ def paso3_1():
     1. Filtrar por **last_approval_status_date** (rango de fechas)
     2. Extraer **id_personal únicos**
     3. Filtrar **base completa** por esos IDs
-    4. Filtrar por **start_date** (mes completo automático)
+    4. Filtrar por **start_date** (selección de usuario; inicio de mes automático)
     5. **Ordenar**: id_personal (↑), start_date (↓)
 
     El CSV resultante está listo para usar en el Paso 4 (Análisis de 30 Días).
@@ -1159,23 +1159,51 @@ def paso3_1():
                 help="Fin del rango para last_approval_status_date. Dejar vacío para procesar TODO"
             )
 
+        st.markdown("### 📅 Filtro para **start_date** (Opcional)")
+        st.caption("Si defines inicio, el sistema toma el inicio de ese mes automáticamente.")
+
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            start_date_inicio = st.date_input(
+                "Fecha Inicio (start_date) - OPCIONAL",
+                value=None,
+                format="DD/MM/YYYY",
+                key="start_date_inicio_prep",
+                help="Mes base para filtrar start_date. Si dejas fin vacío, se usa fin de ese mes."
+            )
+
+        with col_s2:
+            start_date_fin = st.date_input(
+                "Fecha Fin (start_date) - OPCIONAL",
+                value=None,
+                format="DD/MM/YYYY",
+                key="start_date_fin_prep",
+                help="Fin explícito para start_date. Si queda vacío, se usa fin de mes automático."
+            )
+
         # Mostrar información del filtro
         if fecha_ultima_inicio and fecha_ultima_fin:
             import calendar
             from datetime import date
 
-            # Calcular mes automático para start_date
-            ultimo_dia = calendar.monthrange(fecha_ultima_inicio.year, fecha_ultima_inicio.month)[1]
-            start_mes_inicio = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, 1)
-            start_mes_fin = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, ultimo_dia)
+            if start_date_inicio:
+                ultimo_dia = calendar.monthrange(start_date_inicio.year, start_date_inicio.month)[1]
+                start_mes_inicio = date(start_date_inicio.year, start_date_inicio.month, 1)
+                start_mes_fin = start_date_fin if start_date_fin else date(start_date_inicio.year, start_date_inicio.month, ultimo_dia)
+            else:
+                ultimo_dia = calendar.monthrange(fecha_ultima_inicio.year, fecha_ultima_inicio.month)[1]
+                start_mes_inicio = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, 1)
+                start_mes_fin = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, ultimo_dia)
 
             st.warning(f"""
             **Filtros que se aplicarán:**
 
             ✅ **last_approval_status_date**: {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}
 
-            ✅ **start_date** (automático): {start_mes_inicio.strftime('%d/%m/%Y')} → {start_mes_fin.strftime('%d/%m/%Y')} (mes completo)
+            ✅ **start_date**: {start_mes_inicio.strftime('%d/%m/%Y')} → {start_mes_fin.strftime('%d/%m/%Y')}
             """)
+        elif (start_date_inicio or start_date_fin) and not (fecha_ultima_inicio and fecha_ultima_fin):
+            st.warning("⚠️ Para aplicar start_date debes completar también Fecha Inicio y Fecha Fin de fecha_ultima")
         elif not fecha_ultima_inicio and not fecha_ultima_fin:
             st.success("✅ **Modo SIN FILTROS**: Se procesará TODO el archivo")
         else:
@@ -1188,6 +1216,10 @@ def paso3_1():
             # Validar: o ambas fechas completas, o ambas vacías
             if (fecha_ultima_inicio and not fecha_ultima_fin) or (not fecha_ultima_inicio and fecha_ultima_fin):
                 st.error("❌ Debes completar AMBAS fechas o dejar AMBAS vacías")
+            elif (start_date_inicio or start_date_fin) and not (fecha_ultima_inicio and fecha_ultima_fin):
+                st.error("❌ Para usar filtro de start_date también debes completar el rango de fecha_ultima")
+            elif start_date_fin and not start_date_inicio:
+                st.error("❌ Si defines Fecha Fin (start_date), también debes definir Fecha Inicio (start_date)")
             else:
                 try:
                     with st.spinner('⏳ Ejecutando pre-procesamiento...'):
@@ -1210,6 +1242,8 @@ def paso3_1():
                         part3_1.ruta_salida = csv_path_salida
                         part3_1.fecha_ultima_inicio = fecha_ultima_inicio
                         part3_1.fecha_ultima_fin = fecha_ultima_fin
+                        part3_1.start_date_inicio = start_date_inicio
+                        part3_1.start_date_fin = start_date_fin
 
                         # Ejecutar
                         st.info("🔧 Módulo: auditoria_ausentismos_part3_1.py")

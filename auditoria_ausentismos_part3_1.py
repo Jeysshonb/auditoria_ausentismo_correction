@@ -6,7 +6,7 @@ Aplica filtros específicos antes del análisis de 30 días:
 1. Filtrar por last_approval_status_date (rango de fechas)
 2. Extraer id_personal únicos
 3. Filtrar base completa por esos IDs
-4. Filtrar por start_date (mes completo automático)
+4. Filtrar por start_date (rango elegido por usuario; inicio de mes automático)
 5. Ordenar: id_personal (asc), start_date (desc)
 
 El resultado se puede usar directamente en auditoria_ausentismos_part4.py
@@ -28,6 +28,8 @@ ruta_salida = ""
 # Fechas de filtrado (se configurarán desde app.py o manualmente)
 fecha_ultima_inicio = None  # date object
 fecha_ultima_fin = None     # date object
+start_date_inicio = None    # date object (opcional)
+start_date_fin = None       # date object (opcional)
 
 # ============================================================================
 # FUNCIÓN PRINCIPAL
@@ -41,7 +43,7 @@ def aplicar_prefiltrado():
     1. Filtrar por last_approval_status_date (rango)
     2. Extraer id_personal únicos
     3. Filtrar base completa por esos IDs
-    4. Filtrar por start_date (mes completo de fecha_ultima_inicio)
+    4. Filtrar por start_date (rango seleccionado por usuario)
     5. Ordenar: id_personal (asc), start_date (desc)
 
     Returns:
@@ -70,9 +72,19 @@ def aplicar_prefiltrado():
 
     if modo_sin_filtros:
         print("\n🔓 MODO SIN FILTROS: Se procesará TODO el archivo")
+        if start_date_inicio is not None or start_date_fin is not None:
+            print("   ⚠️ start_date fue informado pero se ignorará porque no hay rango completo de fecha_ultima")
     else:
         print(f"\n🔒 MODO CON FILTROS:")
         print(f"   • fecha_ultima: {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}")
+        if start_date_inicio is not None:
+            print(f"   • start_date inicio (usuario): {start_date_inicio.strftime('%d/%m/%Y')}")
+            if start_date_fin is not None:
+                print(f"   • start_date fin (usuario): {start_date_fin.strftime('%d/%m/%Y')}")
+            else:
+                print("   • start_date fin (usuario): AUTO (fin de mes)")
+        else:
+            print("   • start_date: AUTO por mes de fecha_ultima_inicio")
 
     try:
         # ========================================================================
@@ -117,18 +129,29 @@ def aplicar_prefiltrado():
         for i, val in enumerate(df_completo['start_date'].head(10), 1):
             print(f"      {i}. [{type(val).__name__}] '{val}'")
 
-        # Intentar conversión (formato ISO: YYYY-MM-DD)
-        df_completo['last_approval_status_date'] = pd.to_datetime(
-            df_completo['last_approval_status_date'],
-            format='%Y-%m-%d',
-            errors='coerce'
-        )
+        def convertir_fecha_flexible(serie):
+            """Convierte fechas intentando DD/MM/YYYY, luego YYYY-MM-DD y finalmente inferencia."""
+            serie_str = serie.astype(str).str.strip()
 
-        df_completo['start_date'] = pd.to_datetime(
-            df_completo['start_date'],
-            format='%Y-%m-%d',
-            errors='coerce'
-        )
+            # 1) Formato DD/MM/YYYY
+            resultado = pd.to_datetime(serie_str, format='%d/%m/%Y', errors='coerce')
+
+            # 2) Fallback a YYYY-MM-DD para los que fallan
+            mask_na = resultado.isna()
+            if mask_na.any():
+                resultado_iso = pd.to_datetime(serie_str[mask_na], format='%Y-%m-%d', errors='coerce')
+                resultado.loc[mask_na] = resultado_iso
+
+            # 3) Inferencia final para casos mixtos (ej. 8/02/2025, timestamps, etc.)
+            mask_na = resultado.isna()
+            if mask_na.any():
+                resultado_auto = pd.to_datetime(serie_str[mask_na], dayfirst=True, errors='coerce')
+                resultado.loc[mask_na] = resultado_auto
+
+            return resultado
+
+        df_completo['last_approval_status_date'] = convertir_fecha_flexible(df_completo['last_approval_status_date'])
+        df_completo['start_date'] = convertir_fecha_flexible(df_completo['start_date'])
 
         fechas_validas_ultima = df_completo['last_approval_status_date'].notna().sum()
         fechas_validas_start = df_completo['start_date'].notna().sum()
@@ -291,14 +314,34 @@ def aplicar_prefiltrado():
                 print(f"\n⚠️ ADVERTENCIA: No hay fechas start_date válidas en los datos filtrados")
 
             # ========================================================================
-            # PASO 4: FILTRAR POR START_DATE (MES COMPLETO)
+            # PASO 4: FILTRAR POR START_DATE
             # ========================================================================
-            print(f"\n[PASO 4] Filtrando por start_date (mes completo)...")
+            print(f"\n[PASO 4] Filtrando por start_date...")
 
-            # Calcular primer y último día del mes de fecha_ultima_inicio
-            primer_dia_mes = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, 1)
-            ultimo_dia = calendar.monthrange(fecha_ultima_inicio.year, fecha_ultima_inicio.month)[1]
-            ultimo_dia_mes = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, ultimo_dia)
+            # Reglas:
+            # - Si usuario define start_date_inicio: usar inicio de ese mes.
+            # - Si además define start_date_fin: usar ese fin explícito.
+            # - Si no define start_date_inicio: fallback al mes de fecha_ultima_inicio.
+            if start_date_inicio is not None:
+                primer_dia_mes = date(start_date_inicio.year, start_date_inicio.month, 1)
+
+                if start_date_fin is not None:
+                    ultimo_dia_mes = start_date_fin
+                else:
+                    ultimo_dia = calendar.monthrange(start_date_inicio.year, start_date_inicio.month)[1]
+                    ultimo_dia_mes = date(start_date_inicio.year, start_date_inicio.month, ultimo_dia)
+
+                print("   Origen de filtro start_date: selección de usuario")
+            else:
+                primer_dia_mes = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, 1)
+                ultimo_dia = calendar.monthrange(fecha_ultima_inicio.year, fecha_ultima_inicio.month)[1]
+                ultimo_dia_mes = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, ultimo_dia)
+
+                print("   Origen de filtro start_date: mes de fecha_ultima_inicio (fallback)")
+
+            if ultimo_dia_mes < primer_dia_mes:
+                print("❌ ERROR: start_date_fin no puede ser menor que el inicio del mes seleccionado")
+                return None
 
             print(f"   Rango: {primer_dia_mes.strftime('%d/%m/%Y')} → {ultimo_dia_mes.strftime('%d/%m/%Y')}")
 
@@ -400,7 +443,7 @@ def aplicar_prefiltrado():
             print(f"\n📋 Filtros aplicados:")
             print(f"  1. fecha_ultima: {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}")
             print(f"  2. IDs únicos extraídos: {len(ids_validos):,}")
-            print(f"  3. start_date mes: {primer_dia_mes.strftime('%B %Y')}")
+            print(f"  3. start_date: {primer_dia_mes.strftime('%d/%m/%Y')} → {ultimo_dia_mes.strftime('%d/%m/%Y')}")
             print(f"  4. Ordenamiento: id_personal (↑), start_date (↓)")
 
         print(f"\n✅ CSV listo para usar en auditoria_ausentismos_part4.py")
@@ -436,12 +479,15 @@ if __name__ == "__main__":
     # CONFIGURAR ESTAS FECHAS
     fecha_ultima_inicio = date(2026, 1, 3)   # 3 de enero 2026
     fecha_ultima_fin = date(2026, 1, 31)     # 31 de enero 2026
+    start_date_inicio = date(2026, 1, 1)     # inicio mes seleccionado por usuario
+    start_date_fin = None                     # None = fin de mes automático
 
     print("Configuración:")
     print(f"  Entrada: {ruta_entrada}")
     print(f"  Salida: {ruta_salida}")
     print(f"  Fecha última inicio: {fecha_ultima_inicio.strftime('%d/%m/%Y')}")
     print(f"  Fecha última fin: {fecha_ultima_fin.strftime('%d/%m/%Y')}")
+    print(f"  Start date inicio: {start_date_inicio.strftime('%d/%m/%Y')}")
     print()
 
     # Ejecutar pre-filtrado
