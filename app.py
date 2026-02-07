@@ -1301,88 +1301,98 @@ def paso4():
                                        start_date_inicio or start_date_fin)
                         
                         if usar_filtro and tiene_filtro:
-                            st.info("🔍 Aplicando filtros por columnas: **fecha_ultima** Y **start_date**")
-                            
+                            st.info("🔍 Aplicando lógica de filtrado avanzado")
+
                             # Verificar que existan las columnas
                             if 'fecha_ultima' not in df_reporte_30dias.columns or 'start_date' not in df_reporte_30dias.columns:
                                 st.error(f"❌ ERROR: Columnas no encontradas. Disponibles: {df_reporte_30dias.columns.tolist()}")
                             else:
-                                # Crear copia del reporte original
-                                df_reporte_filtrado = df_reporte_30dias.copy()
-                                
-                                registros_antes = len(df_reporte_filtrado)
-                                
+                                registros_antes = len(df_reporte_30dias)
+
                                 try:
-                                    # Convertir ambas columnas a datetime
-                                    df_reporte_filtrado['fecha_ultima_dt'] = pd.to_datetime(
-                                        df_reporte_filtrado['fecha_ultima'], 
-                                        format='%d/%m/%Y', 
-                                        dayfirst=True,
-                                        errors='coerce'
-                                    )
-                                    df_reporte_filtrado['start_date_dt'] = pd.to_datetime(
-                                        df_reporte_filtrado['start_date'], 
+                                    # Convertir columnas a datetime
+                                    df_temp = df_reporte_30dias.copy()
+                                    df_temp['fecha_ultima_dt'] = pd.to_datetime(
+                                        df_temp['fecha_ultima'],
                                         format='%d/%m/%Y',
                                         dayfirst=True,
                                         errors='coerce'
                                     )
-                                    
-                                    # Mostrar rangos disponibles
-                                    min_fu = df_reporte_filtrado['fecha_ultima_dt'].min()
-                                    max_fu = df_reporte_filtrado['fecha_ultima_dt'].max()
-                                    min_sd = df_reporte_filtrado['start_date_dt'].min()
-                                    max_sd = df_reporte_filtrado['start_date_dt'].max()
-                                    
-                                    st.caption(f"📅 Rango fecha_ultima: {min_fu.strftime('%d/%m/%Y')} - {max_fu.strftime('%d/%m/%Y')}")
-                                    st.caption(f"📅 Rango start_date: {min_sd.strftime('%d/%m/%Y')} - {max_sd.strftime('%d/%m/%Y')}")
-                                    
-                                    # APLICAR FILTRO PARA fecha_ultima
+                                    df_temp['start_date_dt'] = pd.to_datetime(
+                                        df_temp['start_date'],
+                                        format='%d/%m/%Y',
+                                        dayfirst=True,
+                                        errors='coerce'
+                                    )
+
+                                    # ============================================================================
+                                    # PASO 1: Filtrar por fecha_ultima (last_approval_status_date)
+                                    # ============================================================================
                                     if fecha_ultima_inicio and fecha_ultima_fin:
                                         fu_inicio_dt = pd.to_datetime(fecha_ultima_inicio)
                                         fu_fin_dt = pd.to_datetime(fecha_ultima_fin)
-                                        df_reporte_filtrado = df_reporte_filtrado[
-                                            (df_reporte_filtrado['fecha_ultima_dt'] >= fu_inicio_dt) &
-                                            (df_reporte_filtrado['fecha_ultima_dt'] <= fu_fin_dt)
-                                        ]
-                                        st.caption(f"✅ Filtrado fecha_ultima: {fu_inicio_dt.strftime('%d/%m/%Y')} → {fu_fin_dt.strftime('%d/%m/%Y')}")
-                                    elif fecha_ultima_inicio:
-                                        fu_inicio_dt = pd.to_datetime(fecha_ultima_inicio)
-                                        df_reporte_filtrado = df_reporte_filtrado[
-                                            df_reporte_filtrado['fecha_ultima_dt'] >= fu_inicio_dt
-                                        ]
-                                        st.caption(f"✅ Filtrado fecha_ultima: >= {fu_inicio_dt.strftime('%d/%m/%Y')}")
-                                    elif fecha_ultima_fin:
-                                        fu_fin_dt = pd.to_datetime(fecha_ultima_fin)
-                                        df_reporte_filtrado = df_reporte_filtrado[
-                                            df_reporte_filtrado['fecha_ultima_dt'] <= fu_fin_dt
-                                        ]
-                                        st.caption(f"✅ Filtrado fecha_ultima: <= {fu_fin_dt.strftime('%d/%m/%Y')}")
-                                    
-                                    # APLICAR FILTRO PARA start_date
-                                    if start_date_inicio and start_date_fin:
-                                        sd_inicio_dt = pd.to_datetime(start_date_inicio)
-                                        sd_fin_dt = pd.to_datetime(start_date_fin)
-                                        df_reporte_filtrado = df_reporte_filtrado[
-                                            (df_reporte_filtrado['start_date_dt'] >= sd_inicio_dt) &
-                                            (df_reporte_filtrado['start_date_dt'] <= sd_fin_dt)
-                                        ]
-                                        st.caption(f"✅ Filtrado start_date: {sd_inicio_dt.strftime('%d/%m/%Y')} → {sd_fin_dt.strftime('%d/%m/%Y')}")
-                                    elif start_date_inicio:
-                                        sd_inicio_dt = pd.to_datetime(start_date_inicio)
-                                        df_reporte_filtrado = df_reporte_filtrado[
-                                            df_reporte_filtrado['start_date_dt'] >= sd_inicio_dt
-                                        ]
-                                        st.caption(f"✅ Filtrado start_date: >= {sd_inicio_dt.strftime('%d/%m/%Y')}")
-                                    elif start_date_fin:
-                                        sd_fin_dt = pd.to_datetime(start_date_fin)
-                                        df_reporte_filtrado = df_reporte_filtrado[
-                                            df_reporte_filtrado['start_date_dt'] <= sd_fin_dt
-                                        ]
-                                        st.caption(f"✅ Filtrado start_date: <= {sd_fin_dt.strftime('%d/%m/%Y')}")
-                                    
+
+                                        df_filtrado_fecha_ultima = df_temp[
+                                            (df_temp['fecha_ultima_dt'] >= fu_inicio_dt) &
+                                            (df_temp['fecha_ultima_dt'] <= fu_fin_dt)
+                                        ].copy()
+
+                                        st.caption(f"✅ Paso 1: Filtrado fecha_ultima: {fu_inicio_dt.strftime('%d/%m/%Y')} → {fu_fin_dt.strftime('%d/%m/%Y')}")
+                                        st.caption(f"   Registros con fecha_ultima en rango: {len(df_filtrado_fecha_ultima):,}")
+
+                                        # ============================================================================
+                                        # PASO 2: Extraer id_personal únicos
+                                        # ============================================================================
+                                        ids_validos = df_filtrado_fecha_ultima['id_personal'].unique()
+                                        st.caption(f"✅ Paso 2: IDs únicos extraídos: {len(ids_validos):,}")
+
+                                        # ============================================================================
+                                        # PASO 3: Filtrar base completa por esos id_personal
+                                        # ============================================================================
+                                        df_filtrado_ids = df_temp[df_temp['id_personal'].isin(ids_validos)].copy()
+                                        st.caption(f"✅ Paso 3: Registros con esos IDs en base completa: {len(df_filtrado_ids):,}")
+
+                                        # ============================================================================
+                                        # PASO 4: Filtrar por start_date (inicio mes hasta fin mes) - SIN end_date
+                                        # ============================================================================
+                                        if start_date_inicio:
+                                            # Calcular fin de mes automático
+                                            import calendar
+                                            from datetime import date
+                                            ultimo_dia = calendar.monthrange(start_date_inicio.year, start_date_inicio.month)[1]
+                                            start_date_fin_auto = date(start_date_inicio.year, start_date_inicio.month, ultimo_dia)
+
+                                            sd_inicio_dt = pd.to_datetime(start_date_inicio)
+                                            sd_fin_dt = pd.to_datetime(start_date_fin_auto)
+
+                                            df_reporte_filtrado = df_filtrado_ids[
+                                                (df_filtrado_ids['start_date_dt'] >= sd_inicio_dt) &
+                                                (df_filtrado_ids['start_date_dt'] <= sd_fin_dt)
+                                            ].copy()
+
+                                            st.caption(f"✅ Paso 4: Filtrado start_date: {sd_inicio_dt.strftime('%d/%m/%Y')} → {sd_fin_dt.strftime('%d/%m/%Y')} (fin mes automático)")
+                                            st.caption(f"   Registros finales: {len(df_reporte_filtrado):,}")
+                                        else:
+                                            # Si no hay start_date, mantener todos los de paso 3
+                                            df_reporte_filtrado = df_filtrado_ids.copy()
+
+                                        # ============================================================================
+                                        # PASO 5: Ordenar - id_personal (asc), start_date (desc)
+                                        # ============================================================================
+                                        df_reporte_filtrado = df_reporte_filtrado.sort_values(
+                                            by=['id_personal', 'start_date_dt'],
+                                            ascending=[True, False]  # id_personal menor→mayor, start_date reciente→antiguo
+                                        )
+                                        st.caption(f"✅ Paso 5: Ordenado por id_personal (asc) y start_date (desc)")
+
+                                    else:
+                                        # Si no hay filtro de fecha_ultima completo, mantener todos
+                                        df_reporte_filtrado = df_temp.copy()
+                                        st.warning("⚠️ Se requieren fecha_ultima inicio Y fin para aplicar el filtro avanzado")
+
                                     # Eliminar columnas auxiliares
                                     df_reporte_filtrado = df_reporte_filtrado.drop(['fecha_ultima_dt', 'start_date_dt'], axis=1)
-                                    
+
                                     registros_despues = len(df_reporte_filtrado)
                                     
                                     if registros_despues == 0:
