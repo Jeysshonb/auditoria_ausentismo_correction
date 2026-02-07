@@ -1243,15 +1243,46 @@ def paso4():
                         df_completo = pd.read_csv(csv_path_original, encoding='utf-8-sig', sep=';')
                         st.caption(f"📊 Registros totales: {len(df_completo):,}")
 
+                        # DEBUG: Mostrar columnas disponibles
+                        with st.expander("🔍 Ver columnas del CSV", expanded=False):
+                            st.write(df_completo.columns.tolist())
+
+                        # Buscar columna de fecha de aprobación
+                        col_fecha_aprobacion = None
+                        if 'last_approval_status_date' in df_completo.columns:
+                            col_fecha_aprobacion = 'last_approval_status_date'
+                        elif 'Last Approval Status Date' in df_completo.columns:
+                            col_fecha_aprobacion = 'Last Approval Status Date'
+                        else:
+                            st.error("❌ No se encontró columna de fecha de aprobación")
+                            st.write("Columnas disponibles:", df_completo.columns.tolist())
+                            st.stop()
+
+                        st.caption(f"✅ Usando columna: '{col_fecha_aprobacion}'")
+
                         # Convertir fechas
                         df_completo['last_approval_status_date'] = pd.to_datetime(
-                            df_completo['last_approval_status_date'],
+                            df_completo[col_fecha_aprobacion],
                             format='%d/%m/%Y',
                             dayfirst=True,
                             errors='coerce'
                         )
+                        # Buscar columna start_date
+                        col_start_date = None
+                        if 'start_date' in df_completo.columns:
+                            col_start_date = 'start_date'
+                        elif 'Start Date' in df_completo.columns:
+                            col_start_date = 'Start Date'
+                        elif 'startDate' in df_completo.columns:
+                            col_start_date = 'startDate'
+                        else:
+                            st.error("❌ No se encontró columna start_date")
+                            st.stop()
+
+                        st.caption(f"✅ Usando columna: '{col_start_date}'")
+
                         df_completo['start_date'] = pd.to_datetime(
-                            df_completo['start_date'],
+                            df_completo[col_start_date],
                             format='%d/%m/%Y',
                             dayfirst=True,
                             errors='coerce'
