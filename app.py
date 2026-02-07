@@ -1340,6 +1340,15 @@ def paso4():
                         sd_inicio_dt = pd.to_datetime(start_date_inicio)
                         sd_fin_dt = pd.to_datetime(start_date_fin_auto)
 
+                        # DEBUG: Mostrar rango y fechas disponibles
+                        st.caption(f"🔍 Rango start_date: {sd_inicio_dt.strftime('%d/%m/%Y')} → {sd_fin_dt.strftime('%d/%m/%Y')}")
+                        if len(df_filtrado_ids) > 0:
+                            fecha_min = df_filtrado_ids['start_date'].min()
+                            fecha_max = df_filtrado_ids['start_date'].max()
+                            st.caption(f"🔍 Fechas disponibles: {fecha_min.strftime('%d/%m/%Y')} → {fecha_max.strftime('%d/%m/%Y')}")
+                        else:
+                            st.warning("⚠️ No hay registros antes del filtro de start_date")
+
                         df_filtrado_final = df_filtrado_ids[
                             (df_filtrado_ids['start_date'] >= sd_inicio_dt) &
                             (df_filtrado_ids['start_date'] <= sd_fin_dt)
@@ -1357,9 +1366,9 @@ def paso4():
                         df_filtrado_final['last_approval_status_date'] = df_filtrado_final['last_approval_status_date'].dt.strftime('%d/%m/%Y')
                         df_filtrado_final['start_date'] = df_filtrado_final['start_date'].dt.strftime('%d/%m/%Y')
 
-                        # Guardar CSV filtrado
+                        # Guardar CSV filtrado (usar coma como separador para compatibilidad con part4)
                         csv_path_filtrado = os.path.join(temp_dir, "ausentismos_PREFILTRADO.csv")
-                        df_filtrado_final.to_csv(csv_path_filtrado, index=False, encoding='utf-8-sig', sep=';')
+                        df_filtrado_final.to_csv(csv_path_filtrado, index=False, encoding='utf-8', sep=',', quoting=2)
 
                         csv_path_a_procesar = csv_path_filtrado
                         st.success(f"✅ Pre-filtrado completo: {len(df_completo):,} → {len(df_filtrado_final):,} registros")
