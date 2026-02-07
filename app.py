@@ -1186,29 +1186,60 @@ def paso4():
                 help="Fin del rango para fecha_ultima"
             )
         
-        st.info("ℹ️ **start_date** se filtrará automáticamente por el mes completo de 'Fecha Inicio (fecha_ultima)'")
+        st.markdown("### 📋 Rango para: **start_date**")
+        st.caption("⚠️ Opcional para 'SOLO PRE-FILTRAR' | ⚠️ Obligatorio para 'PROCESAR ANÁLISIS COMPLETO'")
+
+        col_s1, col_s2 = st.columns(2)
+
+        with col_s1:
+            start_date_inicio = st.date_input(
+                "Fecha Inicio (start_date)",
+                value=None,
+                format="DD/MM/YYYY",
+                key="start_date_inicio",
+                help="Inicio del rango para start_date"
+            )
+
+        with col_s2:
+            start_date_fin = st.date_input(
+                "Fecha Fin (start_date)",
+                value=None,
+                format="DD/MM/YYYY",
+                key="start_date_fin",
+                help="Fin del rango para start_date"
+            )
 
         # Mostrar resumen del filtro
         tiene_filtro_fecha_ultima = fecha_ultima_inicio or fecha_ultima_fin
+        tiene_filtro_start_date = start_date_inicio or start_date_fin
 
-        if tiene_filtro_fecha_ultima:
+        if tiene_filtro_fecha_ultima or tiene_filtro_start_date:
             st.divider()
             st.info("📊 **Resumen del Filtro:**")
 
-            if fecha_ultima_inicio and fecha_ultima_fin:
-                st.write(f"✅ **fecha_ultima**: {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}")
+            if tiene_filtro_fecha_ultima:
+                if fecha_ultima_inicio and fecha_ultima_fin:
+                    st.write(f"✅ **fecha_ultima**: {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}")
 
-                # Calcular mes para start_date
-                import calendar
-                from datetime import date
-                ultimo_dia = calendar.monthrange(fecha_ultima_inicio.year, fecha_ultima_inicio.month)[1]
-                start_mes_inicio = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, 1)
-                start_mes_fin = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, ultimo_dia)
-                st.write(f"✅ **start_date** (automático): {start_mes_inicio.strftime('%d/%m/%Y')} → {start_mes_fin.strftime('%d/%m/%Y')}")
-            elif fecha_ultima_inicio:
-                st.write(f"✅ **fecha_ultima**: >= {fecha_ultima_inicio.strftime('%d/%m/%Y')}")
-            elif fecha_ultima_fin:
-                st.write(f"✅ **fecha_ultima**: <= {fecha_ultima_fin.strftime('%d/%m/%Y')}")
+                    # Mostrar mes automático para pre-filtrado
+                    import calendar
+                    from datetime import date
+                    ultimo_dia = calendar.monthrange(fecha_ultima_inicio.year, fecha_ultima_inicio.month)[1]
+                    start_mes_inicio = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, 1)
+                    start_mes_fin = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, ultimo_dia)
+                    st.write(f"ℹ️ **start_date** (auto para pre-filtrado): {start_mes_inicio.strftime('%d/%m/%Y')} → {start_mes_fin.strftime('%d/%m/%Y')}")
+                elif fecha_ultima_inicio:
+                    st.write(f"✅ **fecha_ultima**: >= {fecha_ultima_inicio.strftime('%d/%m/%Y')}")
+                elif fecha_ultima_fin:
+                    st.write(f"✅ **fecha_ultima**: <= {fecha_ultima_fin.strftime('%d/%m/%Y')}")
+
+            if tiene_filtro_start_date:
+                if start_date_inicio and start_date_fin:
+                    st.write(f"✅ **start_date** (manual para análisis completo): {start_date_inicio.strftime('%d/%m/%Y')} → {start_date_fin.strftime('%d/%m/%Y')}")
+                elif start_date_inicio:
+                    st.write(f"✅ **start_date**: >= {start_date_inicio.strftime('%d/%m/%Y')}")
+                elif start_date_fin:
+                    st.write(f"✅ **start_date**: <= {start_date_fin.strftime('%d/%m/%Y')}")
     
     if csv_paso3:
         st.divider()
@@ -1344,6 +1375,11 @@ def paso4():
         # BOTÓN 2: PROCESAR ANÁLISIS COMPLETO
         # ========================================================================
         if btn_procesar_todo:
+            # Validar que tenga todos los campos necesarios
+            if usar_filtro and not (fecha_ultima_inicio and fecha_ultima_fin and start_date_inicio):
+                st.error("❌ Para procesar análisis completo con filtro debes completar: fecha_ultima (inicio y fin) + start_date (inicio)")
+                st.stop()
+
             try:
                 with st.spinner('⏳ Ejecutando análisis de 30 días...'):
                     temp_dir = tempfile.mkdtemp()
@@ -1446,16 +1482,20 @@ def paso4():
                         fechas_invalidas_count = df_filtrado_ids['start_date'].isna().sum()
                         st.caption(f"🔍 Fechas start_date válidas: {fechas_validas_count:,} | Inválidas (NaT): {fechas_invalidas_count:,}")
 
-                        # PASO 4: Filtrar por start_date (mes completo de fecha_ultima_inicio)
+                        # PASO 4: Filtrar por start_date (usar campos manuales)
                         import calendar
                         from datetime import date
-                        # Calcular primer y último día del mes de fecha_ultima_inicio
-                        primer_dia_mes = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, 1)
-                        ultimo_dia = calendar.monthrange(fecha_ultima_inicio.year, fecha_ultima_inicio.month)[1]
-                        ultimo_dia_mes = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, ultimo_dia)
 
-                        sd_inicio_dt = pd.to_datetime(primer_dia_mes)
-                        sd_fin_dt = pd.to_datetime(ultimo_dia_mes)
+                        # Usar start_date_inicio manual, o calcular fin de mes automático si no hay start_date_fin
+                        sd_inicio_dt = pd.to_datetime(start_date_inicio)
+
+                        if start_date_fin:
+                            sd_fin_dt = pd.to_datetime(start_date_fin)
+                        else:
+                            # Calcular fin de mes automático
+                            ultimo_dia = calendar.monthrange(start_date_inicio.year, start_date_inicio.month)[1]
+                            ultimo_dia_mes = date(start_date_inicio.year, start_date_inicio.month, ultimo_dia)
+                            sd_fin_dt = pd.to_datetime(ultimo_dia_mes)
 
                         # DEBUG: Mostrar rango y fechas disponibles
                         st.caption(f"🔍 Rango start_date: {sd_inicio_dt.strftime('%d/%m/%Y')} → {sd_fin_dt.strftime('%d/%m/%Y')}")
