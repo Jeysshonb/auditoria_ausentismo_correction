@@ -1439,6 +1439,8 @@ def paso4():
                     part4.directorio_salida = temp_dir
                     part4.ruta_salida_unicos = os.path.join(temp_dir, "Registros_unicos.csv")
                     part4.ruta_salida_30dias = os.path.join(temp_dir, "reporte_30_dias.csv")
+                    part4.fecha_ultima_inicio = fecha_ultima_inicio if usar_filtro else None
+                    part4.fecha_ultima_fin = fecha_ultima_fin if usar_filtro else None
 
                     # DEBUG: Mostrar configuración antes de procesar
                     st.info(f"📂 Archivo a procesar: {os.path.basename(csv_path_a_procesar)}")

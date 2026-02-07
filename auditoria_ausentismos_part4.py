@@ -20,6 +20,9 @@ ruta_entrada = ""
 directorio_salida = ""
 ruta_salida_unicos = ""
 ruta_salida_30dias = ""
+# Filtro opcional por fecha_ultima (last_approval_status_date)
+fecha_ultima_inicio = None
+fecha_ultima_fin = None
 
 # Códigos a excluir de registros únicos (con el 215)
 CODIGOS_EXCLUIR_UNICOS = [203, 202, 216, 210, 220, 201, 200, 383, 215]
@@ -65,6 +68,8 @@ def procesar_analisis_completo():
     print(f"  - directorio_salida: {directorio_salida}")
     print(f"  - ruta_salida_unicos: {ruta_salida_unicos}")
     print(f"  - ruta_salida_30dias: {ruta_salida_30dias}")
+    print(f"  - fecha_ultima_inicio: {fecha_ultima_inicio}")
+    print(f"  - fecha_ultima_fin: {fecha_ultima_fin}")
     print(f"  - RUTA_CODIGOS_CSV: {RUTA_CODIGOS_CSV}")
 
     try:
@@ -142,6 +147,26 @@ def procesar_analisis_completo():
             dayfirst=True,
             errors='coerce'
         )
+
+        # Filtro opcional por fecha_ultima
+        if fecha_ultima_inicio is not None and fecha_ultima_fin is not None:
+            fu_inicio_dt = pd.to_datetime(fecha_ultima_inicio, errors='coerce')
+            fu_fin_dt = pd.to_datetime(fecha_ultima_fin, errors='coerce')
+
+            if pd.isna(fu_inicio_dt) or pd.isna(fu_fin_dt):
+                print("   ⚠️ Filtro fecha_ultima ignorado por fechas inválidas")
+            else:
+                registros_antes_filtro_fecha = len(df)
+                df = df[
+                    (df['last_approval_status_date'] >= fu_inicio_dt) &
+                    (df['last_approval_status_date'] <= fu_fin_dt)
+                ].copy()
+                print(
+                    f"   ✅ Filtro fecha_ultima aplicado: {fu_inicio_dt.strftime('%d/%m/%Y')} → "
+                    f"{fu_fin_dt.strftime('%d/%m/%Y')} | {registros_antes_filtro_fecha:,} → {len(df):,}"
+                )
+        elif (fecha_ultima_inicio is not None) != (fecha_ultima_fin is not None):
+            print("   ⚠️ Filtro fecha_ultima incompleto (falta inicio o fin), se omite")
 
         # Filtrar para registros únicos (ya con fechas convertidas)
         df_filtrado_unicos = df[~df['homologacion_clase_de_ausentismo_ssf_vs_sap'].isin(CODIGOS_EXCLUIR_UNICOS)].copy()
