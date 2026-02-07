@@ -1248,13 +1248,13 @@ def paso4():
         col_btn1, col_btn2 = st.columns(2)
 
         with col_btn1:
-            btn_solo_filtrar = st.button("📥 SOLO PRE-FILTRAR", use_container_width=True, help="Solo aplica el pre-filtrado y descarga el CSV sin ejecutar análisis de 30 días")
+            btn_solo_filtrar = st.button("🔧 PRE-PROCESAMIENTO", use_container_width=True, help="Aplica pre-filtrado usando auditoria_ausentismos_part3_1.py y descarga CSV")
 
         with col_btn2:
             btn_procesar_todo = st.button("🚀 PROCESAR ANÁLISIS COMPLETO", use_container_width=True, type="primary", help="Pre-filtrado + Análisis de 30 días")
 
         # ========================================================================
-        # BOTÓN 1: SOLO PRE-FILTRAR Y DESCARGAR
+        # BOTÓN 1: PRE-PROCESAMIENTO (usa auditoria_ausentismos_part3_1.py)
         # ========================================================================
         if btn_solo_filtrar:
             if not usar_filtro:
@@ -1263,7 +1263,7 @@ def paso4():
                 st.error("❌ Debes completar Fecha Inicio y Fecha Fin para fecha_ultima")
             else:
                 try:
-                    with st.spinner('⏳ Aplicando pre-filtrado...'):
+                    with st.spinner('⏳ Ejecutando pre-procesamiento...'):
                         temp_dir = tempfile.mkdtemp()
 
                         # Guardar el archivo subido
@@ -1271,103 +1271,47 @@ def paso4():
                         with open(csv_path_original, "wb") as f:
                             f.write(csv_paso3.getbuffer())
 
-                        # Leer CSV completo
-                        df_completo = pd.read_csv(
-                            csv_path_original,
-                            encoding='utf-8',
-                            sep=',',
-                            quotechar='"',
-                            engine='python',
-                            skipinitialspace=True,
-                            doublequote=True
-                        )
+                        # Configurar rutas de salida
+                        csv_path_salida = os.path.join(temp_dir, "ausentismos_PREFILTRADO.csv")
 
-                        # Limpiar nombres de columnas
-                        df_completo.columns = df_completo.columns.str.strip().str.strip('"').str.strip("'")
+                        # IMPORTAR Y CONFIGURAR MÓDULO PART3_1
+                        import auditoria_ausentismos_part3_1 as part3_1
+                        import importlib
+                        importlib.reload(part3_1)
 
-                        st.info(f"📊 Registros totales: {len(df_completo):,}")
+                        # Configurar parámetros
+                        part3_1.ruta_entrada = csv_path_original
+                        part3_1.ruta_salida = csv_path_salida
+                        part3_1.fecha_ultima_inicio = fecha_ultima_inicio
+                        part3_1.fecha_ultima_fin = fecha_ultima_fin
 
-                        # Convertir fechas
-                        df_completo['last_approval_status_date'] = pd.to_datetime(
-                            df_completo['last_approval_status_date'],
-                            format='%d/%m/%Y',
-                            dayfirst=True,
-                            errors='coerce'
-                        )
-                        df_completo['start_date'] = pd.to_datetime(
-                            df_completo['start_date'],
-                            format='%d/%m/%Y',
-                            dayfirst=True,
-                            errors='coerce'
-                        )
+                        # Ejecutar pre-filtrado usando el módulo
+                        st.info("🔧 Usando módulo: auditoria_ausentismos_part3_1.py")
+                        df_resultado = part3_1.aplicar_prefiltrado()
 
-                        # PASO 1: Filtrar por last_approval_status_date
-                        fu_inicio_dt = pd.to_datetime(fecha_ultima_inicio)
-                        fu_fin_dt = pd.to_datetime(fecha_ultima_fin)
+                        if df_resultado is not None:
+                            # Leer el archivo guardado para descarga
+                            with open(csv_path_salida, 'r', encoding='utf-8') as f:
+                                csv_data = f.read()
 
-                        df_filtrado_fecha = df_completo[
-                            (df_completo['last_approval_status_date'] >= fu_inicio_dt) &
-                            (df_completo['last_approval_status_date'] <= fu_fin_dt)
-                        ].copy()
-                        st.info(f"✅ Paso 1: {len(df_filtrado_fecha):,} registros con fecha_ultima en rango")
+                            st.success(f"✅ Pre-procesamiento completado: {len(df_resultado):,} registros")
 
-                        # PASO 2: Extraer IDs únicos
-                        ids_validos = df_filtrado_fecha['id_personal'].unique()
-                        st.info(f"✅ Paso 2: {len(ids_validos):,} IDs únicos")
+                            # Botón de descarga
+                            st.download_button(
+                                label="⬇️ DESCARGAR CSV PRE-FILTRADO",
+                                data=csv_data,
+                                file_name=f"ausentismos_PREFILTRADO_{fecha_ultima_inicio.strftime('%Y%m')}.csv",
+                                mime="text/csv",
+                                use_container_width=True,
+                                type="primary"
+                            )
 
-                        # PASO 3: Filtrar base completa por esos IDs
-                        df_filtrado_ids = df_completo[df_completo['id_personal'].isin(ids_validos)].copy()
-                        st.info(f"✅ Paso 3: {len(df_filtrado_ids):,} registros con esos IDs")
-
-                        # PASO 4: Filtrar por start_date (usar mes completo de fecha_ultima_inicio)
-                        import calendar
-                        from datetime import date
-                        # Calcular primer y último día del mes de fecha_ultima_inicio
-                        primer_dia_mes = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, 1)
-                        ultimo_dia = calendar.monthrange(fecha_ultima_inicio.year, fecha_ultima_inicio.month)[1]
-                        ultimo_dia_mes = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, ultimo_dia)
-
-                        sd_inicio_dt = pd.to_datetime(primer_dia_mes)
-                        sd_fin_dt = pd.to_datetime(ultimo_dia_mes)
-
-                        df_filtrado_final = df_filtrado_ids[
-                            (df_filtrado_ids['start_date'] >= sd_inicio_dt) &
-                            (df_filtrado_ids['start_date'] <= sd_fin_dt)
-                        ].copy()
-                        st.info(f"✅ Paso 4: {len(df_filtrado_final):,} registros con start_date en mes {fecha_ultima_inicio.strftime('%B %Y')}")
-
-                        # PASO 5: Ordenar
-                        df_filtrado_final = df_filtrado_final.sort_values(
-                            by=['id_personal', 'start_date'],
-                            ascending=[True, False]
-                        )
-                        st.info(f"✅ Paso 5: Ordenado correctamente")
-
-                        # Convertir fechas de vuelta a string
-                        df_filtrado_final['last_approval_status_date'] = df_filtrado_final['last_approval_status_date'].dt.strftime('%d/%m/%Y')
-                        df_filtrado_final['start_date'] = df_filtrado_final['start_date'].dt.strftime('%d/%m/%Y')
-
-                        # Convertir a CSV
-                        csv_buffer = io.StringIO()
-                        df_filtrado_final.to_csv(csv_buffer, index=False, sep=',', quoting=2)
-                        csv_data = csv_buffer.getvalue()
-
-                        st.success(f"✅ Pre-filtrado completo: {len(df_completo):,} → {len(df_filtrado_final):,} registros")
-
-                        # Botón de descarga
-                        st.download_button(
-                            label="⬇️ DESCARGAR CSV PRE-FILTRADO",
-                            data=csv_data,
-                            file_name=f"ausentismos_PREFILTRADO_{fecha_ultima_inicio.strftime('%Y%m')}.csv",
-                            mime="text/csv",
-                            use_container_width=True,
-                            type="primary"
-                        )
-
-                        st.info("💡 Ahora puedes usar este CSV en el análisis de 30 días manualmente")
+                            st.info("💡 Usa este CSV en auditoria_ausentismos_part4.py para análisis de 30 días")
+                        else:
+                            st.error("❌ El pre-procesamiento falló. Revisa los logs arriba.")
 
                 except Exception as e:
-                    st.error(f"❌ Error en pre-filtrado: {str(e)}")
+                    st.error(f"❌ Error en pre-procesamiento: {str(e)}")
                     import traceback
                     st.code(traceback.format_exc())
 
