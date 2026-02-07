@@ -1335,7 +1335,7 @@ def paso4():
                         df_filtrado_final['start_date'] = df_filtrado_final['start_date'].dt.strftime('%d/%m/%Y')
 
                         # Convertir a CSV
-                        csv_buffer = io.StringIO()
+                        csv_buffer = StringIO()
                         df_filtrado_final.to_csv(csv_buffer, index=False, encoding='utf-8', sep=',', quoting=2)
                         csv_data = csv_buffer.getvalue()
 
