@@ -1494,6 +1494,7 @@ def paso4():
                     import auditoria_ausentismos_part4 as part4
                     import importlib
                     importlib.reload(part4)
+                    st.caption(f"DEBUG part4 cargado desde: `{part4.__file__}`")
 
                     # Configurar rutas (usar CSV filtrado si existe)
                     part4.ruta_entrada = csv_path_a_procesar

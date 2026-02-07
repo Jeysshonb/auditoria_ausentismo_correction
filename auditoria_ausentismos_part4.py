@@ -72,6 +72,21 @@ def procesar_analisis_completo():
     print(f"  - fecha_ultima_fin: {fecha_ultima_fin}")
     print(f"  - RUTA_CODIGOS_CSV: {RUTA_CODIGOS_CSV}")
 
+    def normalizar_texto(valor):
+        """Convierte valores mixtos a texto seguro para joins/comparaciones."""
+        if pd.isna(valor):
+            return ''
+        valor_str = str(valor).strip()
+        if valor_str.lower() in {'nan', 'none'}:
+            return ''
+        return valor_str
+
+    def join_seguro(valores, separador):
+        """Une valores heterogéneos evitando TypeError por floats/NaN."""
+        return separador.join(
+            [normalizar_texto(v) for v in valores if normalizar_texto(v)]
+        )
+
     try:
         # ============================================================================
         # PASO 1: FILTRAR Y OBTENER REGISTROS ÚNICOS
@@ -85,7 +100,12 @@ def procesar_analisis_completo():
             raise FileNotFoundError(f"❌ No se encuentra el archivo: {ruta_entrada}")
 
         print(f"   📂 Leyendo archivo: {os.path.basename(ruta_entrada)}")
-        df = pd.read_csv(ruta_entrada, encoding='utf-8-sig')
+        # Leer código diagnóstico como texto para evitar coerción a float/NaN
+        df = pd.read_csv(
+            ruta_entrada,
+            encoding='utf-8-sig',
+            dtype={'descripcion_general_external_code': 'string'}
+        )
         print(f"   ✅ Registros totales: {len(df):,}")
         print(f"   📋 Columnas encontradas: {len(df.columns)}")
 
@@ -130,6 +150,11 @@ def procesar_analisis_completo():
             df['end_date'] = ''
         else:
             print("   ✅ Columna opcional 'end_date' encontrada")
+
+        # Normalizar columnas de texto usadas en joins/formateo
+        df['descripcion_general_external_code'] = df['descripcion_general_external_code'].map(normalizar_texto)
+        df['external_name_label'] = df['external_name_label'].map(normalizar_texto)
+        df['cie10_descripcion'] = df['cie10_descripcion'].map(normalizar_texto)
 
         # Convertir fechas una sola vez (acepta DD/MM/YYYY o YYYY-MM-DD)
         df['last_approval_status_date'] = pd.to_datetime(
@@ -209,11 +234,17 @@ def procesar_analisis_completo():
             print(f"❌ ERROR: No se encontró el archivo {RUTA_CODIGOS_CSV}")
             return None, None
         
-        df_codigos = pd.read_csv(RUTA_CODIGOS_CSV, encoding='utf-8-sig')
+        df_codigos = pd.read_csv(
+            RUTA_CODIGOS_CSV,
+            encoding='utf-8-sig',
+            dtype={'Código': 'string'}
+        )
         
         # Eliminar columna porcentaje_relacion si existe
         if 'porcentaje_relacion' in df_codigos.columns:
             df_codigos = df_codigos.drop('porcentaje_relacion', axis=1)
+
+        df_codigos['Código'] = df_codigos['Código'].map(normalizar_texto)
         
         print(f"✅ Columnas disponibles en matriz: {list(df_codigos.columns)}")
         
@@ -254,7 +285,9 @@ def procesar_analisis_completo():
         
         codigo_a_valores = {}
         for idx, row in df_codigos.iterrows():
-            codigo = row['Código']
+            codigo = normalizar_texto(row['Código'])
+            if not codigo:
+                continue
             valores = {col: row[col] for col in COLUMNAS_PONDERADAS.keys()}
             codigo_a_valores[codigo] = valores
         
@@ -266,8 +299,10 @@ def procesar_analisis_completo():
         print("\n5. Procesando análisis de 30 días...")
         
         resultados = []
+        id_actual = None
         
         for contador, id_pers in enumerate(ids_filtrados, 1):
+            id_actual = id_pers
             # Obtener datos de este ID
             datos_id = df_ausentismos[df_ausentismos['id_personal'] == id_pers].copy()
 
@@ -292,7 +327,7 @@ def procesar_analisis_completo():
             registro_ultimo = datos_id_ordenado.iloc[0]
 
             fecha_aprobacion_maxima = registro_ultimo['last_approval_status_date']
-            codigo_ultima_fecha = registro_ultimo['descripcion_general_external_code']
+            codigo_ultima_fecha = normalizar_texto(registro_ultimo['descripcion_general_external_code'])
             start_date_ultimo = registro_ultimo['start_date']
             end_date_ultimo = registro_ultimo['end_date']
             # CORRECCIÓN: pandas Series no tiene método .get(), usar in index
@@ -355,7 +390,7 @@ def procesar_analisis_completo():
                 cie10_descripciones = []
                 
                 for idx, row in datos_filtrados_sin_choque.iterrows():
-                    cod = row['descripcion_general_external_code']
+                    cod = normalizar_texto(row['descripcion_general_external_code'])
                     sd = row['start_date'].strftime('%d/%m/%Y')
                     dias = row['dias_transcurridos']
                     # CORRECCIÓN: pandas Series no tiene método .get()
@@ -367,7 +402,11 @@ def procesar_analisis_completo():
                     if pd.notna(cie10_desc) and cie10_desc != '':
                         cie10_descripciones.append(f"({str(cie10_desc)})")
                 
-                todos_codigos = datos_filtrados_sin_choque['descripcion_general_external_code'].unique().tolist()
+                todos_codigos = [
+                    normalizar_texto(cod)
+                    for cod in datos_filtrados_sin_choque['descripcion_general_external_code'].unique().tolist()
+                    if normalizar_texto(cod)
+                ]
 
                 resultados.append({
                     'id_personal': id_pers,
@@ -376,12 +415,12 @@ def procesar_analisis_completo():
                     'end_date': end_date_ultimo if pd.notna(end_date_ultimo) else pd.NaT,  # Mantener como datetime
                     'codigo_ultima_fecha': codigo_ultima_fecha,
                     'tipo_concepto': tipo_concepto,
-                    'todos_codigos': ', '.join(todos_codigos),
+                    'todos_codigos': join_seguro(todos_codigos, ', '),
                     'detalle_codigos_con_fechas': ' | '.join(detalle_codigos),
                     'cantidad_codigos': len(todos_codigos),
                     'comparaciones_detalle': 'Código que choca no encontrado en tabla',
                     'porcentaje_relacion': 0.0,
-                    'cie10_descripcion': '|'.join(cie10_descripciones)
+                    'cie10_descripcion': join_seguro(cie10_descripciones, '|')
                 })
                 continue
             
@@ -393,7 +432,7 @@ def procesar_analisis_completo():
             valores_ultima = codigo_a_valores[codigo_ultima_fecha]
             
             for idx, row in datos_filtrados_sin_choque.iterrows():
-                cod = row['descripcion_general_external_code']
+                cod = normalizar_texto(row['descripcion_general_external_code'])
                 sd = row['start_date'].strftime('%d/%m/%Y')
                 dias = row['dias_transcurridos']
                 # CORRECCIÓN: pandas Series no tiene método .get()
@@ -433,7 +472,11 @@ def procesar_analisis_completo():
             # Crear strings de detalle
             detalle_str = ' | '.join(detalle_codigos)
             comparaciones_str = ' | '.join(comparaciones_detalle)
-            todos_codigos = datos_filtrados_sin_choque['descripcion_general_external_code'].unique().tolist()
+            todos_codigos = [
+                normalizar_texto(cod)
+                for cod in datos_filtrados_sin_choque['descripcion_general_external_code'].unique().tolist()
+                if normalizar_texto(cod)
+            ]
             
             # Calcular promedio de porcentajes
             porcentaje_promedio = np.mean(porcentajes) if porcentajes else 0.0
@@ -446,12 +489,12 @@ def procesar_analisis_completo():
                 'end_date': end_date_ultimo if pd.notna(end_date_ultimo) else pd.NaT,  # Mantener como datetime
                 'codigo_ultima_fecha': codigo_ultima_fecha,
                 'tipo_concepto': tipo_concepto,
-                'todos_codigos': ', '.join(todos_codigos),
-                'detalle_codigos_con_fechas': detalle_str,
-                'cantidad_codigos': len(todos_codigos),
-                'comparaciones_detalle': comparaciones_str,
+                'todos_codigos': join_seguro(todos_codigos, ', '),
+                'detalle_codigos_con_fechas': join_seguro([detalle_str], ' | '),
+                'cantidad_codigos': len([c for c in todos_codigos if normalizar_texto(c)]),
+                'comparaciones_detalle': join_seguro([comparaciones_str], ' | '),
                 'porcentaje_relacion': round(porcentaje_promedio, 2),
-                'cie10_descripcion': '|'.join(cie10_descripciones)
+                'cie10_descripcion': join_seguro(cie10_descripciones, '|')
             })
             
             # Mostrar progreso
@@ -533,10 +576,12 @@ def procesar_analisis_completo():
         print("=" * 80)
         print(f"\n🔴 Tipo de Error: {type(e).__name__}")
         print(f"🔴 Mensaje: {str(e)}")
+        if 'id_actual' in locals() and id_actual is not None:
+            print(f"🔴 Último id_personal procesado: {id_actual}")
         print("\n📍 TRACEBACK COMPLETO:")
         print("-" * 80)
         import traceback
-        traceback.print_exc()
+        print(traceback.format_exc())
         print("-" * 80)
         print("\n💡 INFORMACIÓN DE DEBUG:")
         print(f"  - Archivo de entrada existe: {os.path.exists(ruta_entrada) if ruta_entrada else 'NO CONFIGURADO'}")
