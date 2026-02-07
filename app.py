@@ -391,6 +391,10 @@ def paso2():
                     # Intentar leer el CSV con manejo de errores
                     try:
                         df_ausentismo = pd.read_csv(csv_path, encoding='utf-8-sig')
+
+                        # Limpiar nombres de columnas (quitar comillas extra)
+                        df_ausentismo.columns = df_ausentismo.columns.str.strip().str.strip('"').str.strip("'")
+
                         if df_ausentismo.empty or len(df_ausentismo.columns) == 0:
                             st.error("❌ El archivo CSV no contiene datos válidos o no tiene columnas.")
                             st.stop()
@@ -1387,12 +1391,15 @@ def paso4():
                     archivo_30dias_temp = os.path.join(temp_dir, "reporte_30_dias.csv")
                     if os.path.exists(archivo_30dias_temp):
                         df_reporte_30dias = pd.read_csv(
-                            archivo_30dias_temp, 
-                            sep=';', 
+                            archivo_30dias_temp,
+                            sep=';',
                             encoding='utf-8-sig',
                             decimal=','
                         )
-                    
+
+                        # Limpiar nombres de columnas (quitar comillas extra)
+                        df_reporte_30dias.columns = df_reporte_30dias.columns.str.strip().str.strip('"').str.strip("'")
+
                     if df_unicos is not None and df_reporte_30dias is not None:
                         st.success("✅ Análisis completado exitosamente")
                         
