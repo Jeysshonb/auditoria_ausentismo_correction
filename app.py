@@ -1331,6 +1331,11 @@ def paso4():
                         df_filtrado_ids = df_completo[df_completo['id_personal'].isin(ids_validos)].copy()
                         st.caption(f"✅ Paso 3: {len(df_filtrado_ids):,} registros con esos IDs")
 
+                        # DEBUG: Verificar fechas válidas en start_date
+                        fechas_validas_count = df_filtrado_ids['start_date'].notna().sum()
+                        fechas_invalidas_count = df_filtrado_ids['start_date'].isna().sum()
+                        st.caption(f"🔍 Fechas start_date válidas: {fechas_validas_count:,} | Inválidas (NaT): {fechas_invalidas_count:,}")
+
                         # PASO 4: Filtrar por start_date (inicio mes → fin mes)
                         import calendar
                         from datetime import date
@@ -1343,9 +1348,14 @@ def paso4():
                         # DEBUG: Mostrar rango y fechas disponibles
                         st.caption(f"🔍 Rango start_date: {sd_inicio_dt.strftime('%d/%m/%Y')} → {sd_fin_dt.strftime('%d/%m/%Y')}")
                         if len(df_filtrado_ids) > 0:
-                            fecha_min = df_filtrado_ids['start_date'].min()
-                            fecha_max = df_filtrado_ids['start_date'].max()
-                            st.caption(f"🔍 Fechas disponibles: {fecha_min.strftime('%d/%m/%Y')} → {fecha_max.strftime('%d/%m/%Y')}")
+                            # Filtrar fechas válidas (no NaT)
+                            fechas_validas = df_filtrado_ids['start_date'].dropna()
+                            if len(fechas_validas) > 0:
+                                fecha_min = fechas_validas.min()
+                                fecha_max = fechas_validas.max()
+                                st.caption(f"🔍 Fechas disponibles: {fecha_min.strftime('%d/%m/%Y')} → {fecha_max.strftime('%d/%m/%Y')}")
+                            else:
+                                st.warning("⚠️ Todas las fechas start_date son inválidas (NaT)")
                         else:
                             st.warning("⚠️ No hay registros antes del filtro de start_date")
 
