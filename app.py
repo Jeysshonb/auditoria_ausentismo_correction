@@ -1283,7 +1283,7 @@ def paso4():
     
     with st.expander("ℹ️ ¿Qué hace este paso?", expanded=False):
         st.write("**📥 Archivos de Entrada:**")
-        st.write("• CSV del Paso 3 (ausentismos_completo_con_cie10.csv)")
+        st.write("• CSV PRE-FILTRADO del Paso 3.1 (ausentismos_PREFILTRADO.csv)")
         
         st.write("**📤 Archivos de Salida:**")
         st.write("• Registros_unicos.csv - Registros únicos por id_personal filtrados por códigos")
@@ -1306,10 +1306,10 @@ def paso4():
     
     st.subheader("📤 Archivo de Entrada")
     csv_paso3 = st.file_uploader(
-        "CSV del Paso 3 (ausentismos_completo_con_cie10.csv)",
+        "CSV PRE-FILTRADO del Paso 3.1 (ausentismos_PREFILTRADO.csv)",
         type=['csv'],
         key="csv4",
-        help="Archivo completo con CIE-10 del Paso 3"
+        help="Archivo generado por auditoria_ausentismos_part3_1.py"
     )
     
     st.divider()
@@ -1326,189 +1326,38 @@ def paso4():
         st.metric("Días hacia atrás", "30 días")
     
     st.divider()
-    st.subheader("📅 Filtro de Fechas para Reporte 30 Días (Opcional)")
-    st.caption("Filtra por `fecha_ultima`. El `start_date` se calcula automáticamente (mes completo) en part3_1.")
-    
-    usar_filtro = st.checkbox("🔍 Activar filtro de fechas", value=False)
-    
+    st.info("ℹ️ En este paso NO se pre-procesa. Usa el CSV ya pre-filtrado por part3_1.")
+
+    # Variables conservadas por compatibilidad con bloques legacy desactivados
+    usar_filtro = False
     fecha_ultima_inicio = None
     fecha_ultima_fin = None
-    start_date_inicio = None  # Compatibilidad con bloque legacy desactivado
-    
-    if usar_filtro:
-        st.markdown("### 📋 Rango para: **fecha_ultima**")
-        col_f1, col_f2 = st.columns(2)
-        
-        with col_f1:
-            fecha_ultima_inicio = st.date_input(
-                "Fecha Inicio (fecha_ultima)",
-                value=None,
-                format="DD/MM/YYYY",
-                key="fecha_ultima_inicio",
-                help="Inicio del rango para fecha_ultima"
-            )
-        
-        with col_f2:
-            fecha_ultima_fin = st.date_input(
-                "Fecha Fin (fecha_ultima)",
-                value=None,
-                format="DD/MM/YYYY",
-                key="fecha_ultima_fin",
-                help="Fin del rango para fecha_ultima"
-            )
-
-        # Mostrar resumen del filtro
-        tiene_filtro_fecha_ultima = fecha_ultima_inicio or fecha_ultima_fin
-
-        if tiene_filtro_fecha_ultima:
-            st.divider()
-            st.info("📊 **Resumen del Filtro:**")
-
-            if tiene_filtro_fecha_ultima:
-                if fecha_ultima_inicio and fecha_ultima_fin:
-                    st.write(f"✅ **fecha_ultima**: {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}")
-
-                    # Mostrar mes automático para pre-filtrado
-                    import calendar
-                    from datetime import date
-                    ultimo_dia = calendar.monthrange(fecha_ultima_inicio.year, fecha_ultima_inicio.month)[1]
-                    start_mes_inicio = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, 1)
-                    start_mes_fin = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, ultimo_dia)
-                    st.write(f"ℹ️ **start_date** (auto para pre-filtrado): {start_mes_inicio.strftime('%d/%m/%Y')} → {start_mes_fin.strftime('%d/%m/%Y')}")
-                elif fecha_ultima_inicio:
-                    st.write(f"✅ **fecha_ultima**: >= {fecha_ultima_inicio.strftime('%d/%m/%Y')}")
-                elif fecha_ultima_fin:
-                    st.write(f"✅ **fecha_ultima**: <= {fecha_ultima_fin.strftime('%d/%m/%Y')}")
+    start_date_inicio = None
     
     if csv_paso3:
         st.divider()
 
-        # Botones en columnas
-        col_btn1, col_btn2 = st.columns(2)
-
-        with col_btn1:
-            btn_solo_filtrar = st.button("🔧 PRE-PROCESAMIENTO", use_container_width=True, help="Aplica pre-filtrado usando auditoria_ausentismos_part3_1.py y descarga CSV")
-
-        with col_btn2:
-            btn_procesar_todo = st.button("🚀 PROCESAR ANÁLISIS COMPLETO", use_container_width=True, type="primary", help="Pre-filtrado + Análisis de 30 días")
-
-        # ========================================================================
-        # BOTÓN 1: PRE-PROCESAMIENTO (usa auditoria_ausentismos_part3_1.py)
-        # ========================================================================
-        if btn_solo_filtrar:
-            if not usar_filtro:
-                st.error("❌ Debes activar el filtro y seleccionar las fechas primero")
-            elif not (fecha_ultima_inicio and fecha_ultima_fin):
-                st.error("❌ Debes completar Fecha Inicio y Fecha Fin para fecha_ultima")
-            else:
-                try:
-                    with st.spinner('⏳ Ejecutando pre-procesamiento...'):
-                        temp_dir = tempfile.mkdtemp()
-
-                        # Guardar el archivo subido
-                        csv_path_original = os.path.join(temp_dir, "ausentismos_completo_con_cie10.csv")
-                        with open(csv_path_original, "wb") as f:
-                            f.write(csv_paso3.getbuffer())
-
-                        # Configurar rutas de salida
-                        csv_path_salida = os.path.join(temp_dir, "ausentismos_PREFILTRADO.csv")
-
-                        # IMPORTAR Y CONFIGURAR MÓDULO PART3_1
-                        import auditoria_ausentismos_part3_1 as part3_1
-                        import importlib
-                        importlib.reload(part3_1)
-
-                        # Configurar parámetros
-                        part3_1.ruta_entrada = csv_path_original
-                        part3_1.ruta_salida = csv_path_salida
-                        part3_1.fecha_ultima_inicio = fecha_ultima_inicio
-                        part3_1.fecha_ultima_fin = fecha_ultima_fin
-
-                        # Ejecutar pre-filtrado usando el módulo
-                        st.info("🔧 Usando módulo: auditoria_ausentismos_part3_1.py")
-                        df_resultado = part3_1.aplicar_prefiltrado()
-
-                        if df_resultado is not None:
-                            # Leer el archivo guardado para descarga
-                            with open(csv_path_salida, 'r', encoding='utf-8') as f:
-                                csv_data = f.read()
-
-                            st.success(f"✅ Pre-procesamiento completado: {len(df_resultado):,} registros")
-
-                            # Botón de descarga
-                            st.download_button(
-                                label="⬇️ DESCARGAR CSV PRE-FILTRADO",
-                                data=csv_data,
-                                file_name=f"ausentismos_PREFILTRADO_{fecha_ultima_inicio.strftime('%Y%m')}.csv",
-                                mime="text/csv",
-                                use_container_width=True,
-                                type="primary"
-                            )
-
-                            st.info("💡 Usa este CSV en auditoria_ausentismos_part4.py para análisis de 30 días")
-                        else:
-                            st.error("❌ El pre-procesamiento falló. Revisa los logs arriba.")
-
-                except Exception as e:
-                    st.error(f"❌ Error en pre-procesamiento: {str(e)}")
-                    import traceback
-                    st.code(traceback.format_exc())
+        btn_procesar_todo = st.button(
+            "🚀 PROCESAR ANÁLISIS COMPLETO",
+            use_container_width=True,
+            type="primary",
+            help="Ejecuta auditoria_ausentismos_part4.py sobre el CSV pre-filtrado"
+        )
 
         # ========================================================================
         # BOTÓN 2: PROCESAR ANÁLISIS COMPLETO
         # ========================================================================
         if btn_procesar_todo:
-            # Validar que tenga todos los campos necesarios
-            if usar_filtro and not (fecha_ultima_inicio and fecha_ultima_fin):
-                st.error("❌ Para procesar análisis completo con filtro debes completar: fecha_ultima (inicio y fin)")
-                st.stop()
-
             try:
                 with st.spinner('⏳ Ejecutando análisis de 30 días...'):
                     temp_dir = tempfile.mkdtemp()
                     
                     # Guardar el archivo subido
-                    csv_path_original = os.path.join(temp_dir, "ausentismos_completo_con_cie10.csv")
-                    with open(csv_path_original, "wb") as f:
+                    csv_path_a_procesar = os.path.join(temp_dir, "ausentismos_PREFILTRADO.csv")
+                    with open(csv_path_a_procesar, "wb") as f:
                         f.write(csv_paso3.getbuffer())
 
-                    # ============================================================================
-                    # PRE-FILTRADO CENTRALIZADO EN PART3_1
-                    # ============================================================================
-                    csv_path_filtrado = os.path.join(temp_dir, "ausentismos_PREFILTRADO.csv")
-
-                    import auditoria_ausentismos_part3_1 as part3_1
-                    import importlib
-                    importlib.reload(part3_1)
-
-                    part3_1.ruta_entrada = csv_path_original
-                    part3_1.ruta_salida = csv_path_filtrado
-                    part3_1.fecha_ultima_inicio = fecha_ultima_inicio if usar_filtro else None
-                    part3_1.fecha_ultima_fin = fecha_ultima_fin if usar_filtro else None
-
-                    st.info("🔧 Pre-procesando con auditoria_ausentismos_part3_1.py")
-
-                    import sys
-                    from io import StringIO
-
-                    old_stdout = sys.stdout
-                    sys.stdout = pre_output = StringIO()
-                    try:
-                        df_prefiltrado = part3_1.aplicar_prefiltrado()
-                    finally:
-                        sys.stdout = old_stdout
-
-                    pre_output_text = pre_output.getvalue()
-                    if pre_output_text:
-                        with st.expander("📋 VER LOG DE PRE-PROCESAMIENTO (PART3_1)", expanded=False):
-                            st.code(pre_output_text, language="text")
-
-                    if df_prefiltrado is None:
-                        st.error("❌ El pre-procesamiento (part3_1) falló. Revisa el log.")
-                        st.stop()
-
-                    csv_path_a_procesar = csv_path_filtrado
-                    st.success(f"✅ Pre-procesamiento listo: {len(df_prefiltrado):,} registros")
+                    st.info("🔧 Ejecutando auditoria_ausentismos_part4.py sobre CSV pre-filtrado (part3_1)")
 
                     # Importar y ejecutar el procesamiento
                     import auditoria_ausentismos_part4 as part4
