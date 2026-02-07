@@ -156,6 +156,18 @@ def aplicar_prefiltrado():
 
         print(f"✅ Registros con esos IDs: {len(df_filtrado_ids):,}")
 
+        # DEBUG: Mostrar fechas disponibles en start_date
+        fechas_validas_start = df_filtrado_ids['start_date'].dropna()
+        if len(fechas_validas_start) > 0:
+            fecha_min_start = fechas_validas_start.min()
+            fecha_max_start = fechas_validas_start.max()
+            print(f"\n🔍 DEBUG - Fechas start_date disponibles:")
+            print(f"   • Mínima: {fecha_min_start.strftime('%d/%m/%Y')}")
+            print(f"   • Máxima: {fecha_max_start.strftime('%d/%m/%Y')}")
+            print(f"   • Total válidas: {len(fechas_validas_start):,}")
+        else:
+            print(f"\n⚠️ ADVERTENCIA: No hay fechas start_date válidas en los datos filtrados")
+
         # ========================================================================
         # PASO 4: FILTRAR POR START_DATE (MES COMPLETO)
         # ========================================================================
@@ -177,6 +189,29 @@ def aplicar_prefiltrado():
         ].copy()
 
         print(f"✅ Registros con start_date en mes: {len(df_filtrado_final):,}")
+
+        # DEBUG: Si queda en 0, mostrar por qué
+        if len(df_filtrado_final) == 0:
+            print(f"\n⚠️ ADVERTENCIA: 0 registros después de filtrar por start_date")
+            print(f"   Posibles causas:")
+            print(f"   1. No hay registros con start_date en {primer_dia_mes.strftime('%B %Y')}")
+            print(f"   2. Las fechas están en formato diferente")
+            print(f"   3. El mes seleccionado no tiene datos")
+
+            # Mostrar muestra de fechas que SÍ existen
+            if len(fechas_validas_start) > 0:
+                print(f"\n   📋 Muestra de fechas start_date que SÍ existen:")
+                muestra = fechas_validas_start.head(10)
+                for i, fecha in enumerate(muestra, 1):
+                    print(f"      {i}. {fecha.strftime('%d/%m/%Y')}")
+
+                # Contar registros por mes
+                df_filtrado_ids['mes_start'] = df_filtrado_ids['start_date'].dt.to_period('M')
+                conteo_por_mes = df_filtrado_ids['mes_start'].value_counts().head(5)
+                print(f"\n   📊 Registros por mes (top 5):")
+                for mes, count in conteo_por_mes.items():
+                    print(f"      {mes}: {count:,} registros")
+                df_filtrado_ids = df_filtrado_ids.drop('mes_start', axis=1)
 
         # ========================================================================
         # PASO 5: ORDENAR
