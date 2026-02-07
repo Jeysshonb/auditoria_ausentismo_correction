@@ -102,6 +102,17 @@ def aplicar_prefiltrado():
         # ========================================================================
         print("\n📅 Convirtiendo fechas a formato datetime...")
 
+        # DEBUG: Mostrar valores RAW antes de convertir
+        print("\n🔍 DEBUG - Valores RAW ANTES de convertir (primeros 10):")
+        print("\n   last_approval_status_date:")
+        for i, val in enumerate(df_completo['last_approval_status_date'].head(10), 1):
+            print(f"      {i}. [{type(val).__name__}] '{val}'")
+
+        print("\n   start_date:")
+        for i, val in enumerate(df_completo['start_date'].head(10), 1):
+            print(f"      {i}. [{type(val).__name__}] '{val}'")
+
+        # Intentar conversión
         df_completo['last_approval_status_date'] = pd.to_datetime(
             df_completo['last_approval_status_date'],
             format='%d/%m/%Y',
@@ -119,8 +130,23 @@ def aplicar_prefiltrado():
         fechas_validas_ultima = df_completo['last_approval_status_date'].notna().sum()
         fechas_validas_start = df_completo['start_date'].notna().sum()
 
-        print(f"✅ Fechas válidas last_approval_status_date: {fechas_validas_ultima:,}")
+        print(f"\n✅ Fechas válidas last_approval_status_date: {fechas_validas_ultima:,}")
         print(f"✅ Fechas válidas start_date: {fechas_validas_start:,}")
+
+        # DEBUG: Si todas fallaron, mostrar por qué
+        if fechas_validas_ultima == 0:
+            print(f"\n⚠️ ERROR CRÍTICO: TODAS las fechas last_approval_status_date fallaron en conversión")
+            print(f"   Valores únicos encontrados (primeros 5):")
+            valores_unicos = df_completo['last_approval_status_date'].dropna().unique()[:5]
+            for val in valores_unicos:
+                print(f"      '{val}'")
+
+        if fechas_validas_start == 0:
+            print(f"\n⚠️ ERROR CRÍTICO: TODAS las fechas start_date fallaron en conversión")
+            print(f"   Valores únicos encontrados (primeros 5):")
+            valores_unicos = df_completo['start_date'].dropna().unique()[:5]
+            for val in valores_unicos:
+                print(f"      '{val}'")
 
         # ========================================================================
         # PASO 1: FILTRAR POR LAST_APPROVAL_STATUS_DATE
