@@ -1238,11 +1238,18 @@ def paso3_1():
                             # Botón de descarga
                             col1, col2 = st.columns([2, 1])
 
+                            # Nombre de archivo según modo
+                            if fecha_ultima_inicio:
+                                nombre_archivo = f"ausentismos_PREFILTRADO_{fecha_ultima_inicio.strftime('%Y%m')}.csv"
+                            else:
+                                from datetime import datetime
+                                nombre_archivo = f"ausentismos_COMPLETO_{datetime.now().strftime('%Y%m%d')}.csv"
+
                             with col1:
                                 st.download_button(
                                     label="⬇️ DESCARGAR CSV PRE-FILTRADO",
                                     data=csv_data,
-                                    file_name=f"ausentismos_PREFILTRADO_{fecha_ultima_inicio.strftime('%Y%m')}.csv",
+                                    file_name=nombre_archivo,
                                     mime="text/csv",
                                     use_container_width=True,
                                     type="primary"
