@@ -1283,7 +1283,7 @@ def paso4():
     
     with st.expander("ℹ️ ¿Qué hace este paso?", expanded=False):
         st.write("**📥 Archivos de Entrada:**")
-        st.write("• CSV PRE-FILTRADO del Paso 3.1 (ausentismos_PREFILTRADO.csv)")
+        st.write("• CSV del Paso 3 (completo o pre-filtrado)")
         
         st.write("**📤 Archivos de Salida:**")
         st.write("• Registros_unicos.csv - Registros únicos por id_personal filtrados por códigos")
@@ -1306,10 +1306,10 @@ def paso4():
     
     st.subheader("📤 Archivo de Entrada")
     csv_paso3 = st.file_uploader(
-        "CSV PRE-FILTRADO del Paso 3.1 (ausentismos_PREFILTRADO.csv)",
+        "CSV del Paso 3 (ausentismos_completo_con_cie10.csv o ausentismos_PREFILTRADO.csv)",
         type=['csv'],
         key="csv4",
-        help="Archivo generado por auditoria_ausentismos_part3_1.py"
+        help="Si activas filtros de fecha, se aplican con auditoria_ausentismos_part3_1.py"
     )
     
     st.divider()
@@ -1326,13 +1326,41 @@ def paso4():
         st.metric("Días hacia atrás", "30 días")
     
     st.divider()
-    st.info("ℹ️ En este paso NO se pre-procesa. Usa el CSV ya pre-filtrado por part3_1.")
+    st.subheader("📅 Filtro de Fechas (Opcional)")
+    st.caption("Se aplica usando part3_1: filtra por fecha_ultima y calcula start_date del mes automáticamente.")
 
-    # Variables conservadas por compatibilidad con bloques legacy desactivados
-    usar_filtro = False
+    usar_filtro = st.checkbox("🔍 Activar filtro de fechas", value=False)
     fecha_ultima_inicio = None
     fecha_ultima_fin = None
     start_date_inicio = None
+
+    if usar_filtro:
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            fecha_ultima_inicio = st.date_input(
+                "Fecha Inicio (fecha_ultima)",
+                value=None,
+                format="DD/MM/YYYY",
+                key="paso4_fecha_ultima_inicio"
+            )
+        with col_f2:
+            fecha_ultima_fin = st.date_input(
+                "Fecha Fin (fecha_ultima)",
+                value=None,
+                format="DD/MM/YYYY",
+                key="paso4_fecha_ultima_fin"
+            )
+
+        if fecha_ultima_inicio and fecha_ultima_fin:
+            import calendar
+            from datetime import date
+            ultimo_dia = calendar.monthrange(fecha_ultima_inicio.year, fecha_ultima_inicio.month)[1]
+            start_mes_inicio = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, 1)
+            start_mes_fin = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, ultimo_dia)
+            st.info(
+                f"📌 Rango fecha_ultima: {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}\n\n"
+                f"📌 start_date automático: {start_mes_inicio.strftime('%d/%m/%Y')} → {start_mes_fin.strftime('%d/%m/%Y')}"
+            )
     
     if csv_paso3:
         st.divider()
@@ -1341,7 +1369,7 @@ def paso4():
             "🚀 PROCESAR ANÁLISIS COMPLETO",
             use_container_width=True,
             type="primary",
-            help="Ejecuta auditoria_ausentismos_part4.py sobre el CSV pre-filtrado"
+            help="Aplica filtros opcionales (part3_1) y ejecuta part4"
         )
 
         # ========================================================================
@@ -1353,11 +1381,53 @@ def paso4():
                     temp_dir = tempfile.mkdtemp()
                     
                     # Guardar el archivo subido
-                    csv_path_a_procesar = os.path.join(temp_dir, "ausentismos_PREFILTRADO.csv")
-                    with open(csv_path_a_procesar, "wb") as f:
+                    csv_path_original = os.path.join(temp_dir, "ausentismos_completo_con_cie10.csv")
+                    with open(csv_path_original, "wb") as f:
                         f.write(csv_paso3.getbuffer())
 
-                    st.info("🔧 Ejecutando auditoria_ausentismos_part4.py sobre CSV pre-filtrado (part3_1)")
+                    csv_path_a_procesar = csv_path_original
+
+                    if usar_filtro:
+                        if not (fecha_ultima_inicio and fecha_ultima_fin):
+                            st.error("❌ Debes completar Fecha Inicio y Fecha Fin para aplicar filtro")
+                            st.stop()
+
+                        st.info("🔧 Aplicando filtros con auditoria_ausentismos_part3_1.py")
+
+                        csv_path_filtrado = os.path.join(temp_dir, "ausentismos_PREFILTRADO.csv")
+
+                        import auditoria_ausentismos_part3_1 as part3_1
+                        import importlib
+                        importlib.reload(part3_1)
+
+                        part3_1.ruta_entrada = csv_path_original
+                        part3_1.ruta_salida = csv_path_filtrado
+                        part3_1.fecha_ultima_inicio = fecha_ultima_inicio
+                        part3_1.fecha_ultima_fin = fecha_ultima_fin
+
+                        import sys
+                        from io import StringIO
+
+                        old_stdout = sys.stdout
+                        sys.stdout = pre_output = StringIO()
+                        try:
+                            df_prefiltrado = part3_1.aplicar_prefiltrado()
+                        finally:
+                            sys.stdout = old_stdout
+
+                        pre_output_text = pre_output.getvalue()
+                        if pre_output_text:
+                            with st.expander("📋 VER LOG DE PRE-PROCESAMIENTO (PART3_1)", expanded=False):
+                                st.code(pre_output_text, language="text")
+
+                        if df_prefiltrado is None:
+                            st.error("❌ El pre-procesamiento (part3_1) falló. Revisa el log.")
+                            st.stop()
+
+                        csv_path_a_procesar = csv_path_filtrado
+                        st.success(f"✅ Pre-procesamiento completado: {len(df_prefiltrado):,} registros")
+                    else:
+                        st.info("ℹ️ Filtros desactivados: se procesa el archivo tal cual")
 
                     # Importar y ejecutar el procesamiento
                     import auditoria_ausentismos_part4 as part4
