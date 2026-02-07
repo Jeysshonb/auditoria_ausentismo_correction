@@ -1327,14 +1327,13 @@ def paso4():
     
     st.divider()
     st.subheader("📅 Filtro de Fechas para Reporte 30 Días (Opcional)")
-    st.caption("Filtra por AMBAS columnas: fecha_ultima Y start_date")
+    st.caption("Filtra por `fecha_ultima`. El `start_date` se calcula automáticamente (mes completo) en part3_1.")
     
     usar_filtro = st.checkbox("🔍 Activar filtro de fechas", value=False)
     
     fecha_ultima_inicio = None
     fecha_ultima_fin = None
-    start_date_inicio = None
-    start_date_fin = None
+    start_date_inicio = None  # Compatibilidad con bloque legacy desactivado
     
     if usar_filtro:
         st.markdown("### 📋 Rango para: **fecha_ultima**")
@@ -1357,35 +1356,11 @@ def paso4():
                 key="fecha_ultima_fin",
                 help="Fin del rango para fecha_ultima"
             )
-        
-        st.markdown("### 📋 Rango para: **start_date**")
-        st.caption("⚠️ Opcional para 'SOLO PRE-FILTRAR' | ⚠️ Obligatorio para 'PROCESAR ANÁLISIS COMPLETO'")
-
-        col_s1, col_s2 = st.columns(2)
-
-        with col_s1:
-            start_date_inicio = st.date_input(
-                "Fecha Inicio (start_date)",
-                value=None,
-                format="DD/MM/YYYY",
-                key="start_date_inicio",
-                help="Inicio del rango para start_date"
-            )
-
-        with col_s2:
-            start_date_fin = st.date_input(
-                "Fecha Fin (start_date)",
-                value=None,
-                format="DD/MM/YYYY",
-                key="start_date_fin",
-                help="Fin del rango para start_date"
-            )
 
         # Mostrar resumen del filtro
         tiene_filtro_fecha_ultima = fecha_ultima_inicio or fecha_ultima_fin
-        tiene_filtro_start_date = start_date_inicio or start_date_fin
 
-        if tiene_filtro_fecha_ultima or tiene_filtro_start_date:
+        if tiene_filtro_fecha_ultima:
             st.divider()
             st.info("📊 **Resumen del Filtro:**")
 
@@ -1404,14 +1379,6 @@ def paso4():
                     st.write(f"✅ **fecha_ultima**: >= {fecha_ultima_inicio.strftime('%d/%m/%Y')}")
                 elif fecha_ultima_fin:
                     st.write(f"✅ **fecha_ultima**: <= {fecha_ultima_fin.strftime('%d/%m/%Y')}")
-
-            if tiene_filtro_start_date:
-                if start_date_inicio and start_date_fin:
-                    st.write(f"✅ **start_date** (manual para análisis completo): {start_date_inicio.strftime('%d/%m/%Y')} → {start_date_fin.strftime('%d/%m/%Y')}")
-                elif start_date_inicio:
-                    st.write(f"✅ **start_date**: >= {start_date_inicio.strftime('%d/%m/%Y')}")
-                elif start_date_fin:
-                    st.write(f"✅ **start_date**: <= {start_date_fin.strftime('%d/%m/%Y')}")
     
     if csv_paso3:
         st.divider()
@@ -1492,8 +1459,8 @@ def paso4():
         # ========================================================================
         if btn_procesar_todo:
             # Validar que tenga todos los campos necesarios
-            if usar_filtro and not (fecha_ultima_inicio and fecha_ultima_fin and start_date_inicio):
-                st.error("❌ Para procesar análisis completo con filtro debes completar: fecha_ultima (inicio y fin) + start_date (inicio)")
+            if usar_filtro and not (fecha_ultima_inicio and fecha_ultima_fin):
+                st.error("❌ Para procesar análisis completo con filtro debes completar: fecha_ultima (inicio y fin)")
                 st.stop()
 
             try:
@@ -1506,150 +1473,42 @@ def paso4():
                         f.write(csv_paso3.getbuffer())
 
                     # ============================================================================
-                    # PRE-FILTRADO SI HAY FILTROS ACTIVADOS
+                    # PRE-FILTRADO CENTRALIZADO EN PART3_1
                     # ============================================================================
-                    csv_path_a_procesar = csv_path_original
+                    csv_path_filtrado = os.path.join(temp_dir, "ausentismos_PREFILTRADO.csv")
 
-                    if usar_filtro and (fecha_ultima_inicio and fecha_ultima_fin):
-                        st.info("🔍 Aplicando pre-filtrado antes del análisis de 30 días")
+                    import auditoria_ausentismos_part3_1 as part3_1
+                    import importlib
+                    importlib.reload(part3_1)
 
-                        # Leer CSV completo (separador: coma, con comillas en campos de texto)
-                        df_completo = pd.read_csv(
-                            csv_path_original,
-                            encoding='utf-8',
-                            sep=',',
-                            quotechar='"',
-                            engine='python',
-                            skipinitialspace=True,
-                            doublequote=True
-                        )
+                    part3_1.ruta_entrada = csv_path_original
+                    part3_1.ruta_salida = csv_path_filtrado
+                    part3_1.fecha_ultima_inicio = fecha_ultima_inicio if usar_filtro else None
+                    part3_1.fecha_ultima_fin = fecha_ultima_fin if usar_filtro else None
 
-                        # Limpiar nombres de columnas (quitar comillas extra)
-                        df_completo.columns = df_completo.columns.str.strip().str.strip('"').str.strip("'")
+                    st.info("🔧 Pre-procesando con auditoria_ausentismos_part3_1.py")
 
-                        st.caption(f"📊 Registros totales: {len(df_completo):,}")
-                        st.caption(f"🔍 Total columnas: {len(df_completo.columns)} | Primeras 3: {df_completo.columns.tolist()[:3]}")
+                    import sys
+                    from io import StringIO
 
-                        # DEBUG: Mostrar columnas disponibles
-                        with st.expander("🔍 Ver columnas del CSV", expanded=False):
-                            st.write(df_completo.columns.tolist())
+                    old_stdout = sys.stdout
+                    sys.stdout = pre_output = StringIO()
+                    try:
+                        df_prefiltrado = part3_1.aplicar_prefiltrado()
+                    finally:
+                        sys.stdout = old_stdout
 
-                        # Buscar columna de fecha de aprobación
-                        col_fecha_aprobacion = None
-                        if 'last_approval_status_date' in df_completo.columns:
-                            col_fecha_aprobacion = 'last_approval_status_date'
-                        elif 'Last Approval Status Date' in df_completo.columns:
-                            col_fecha_aprobacion = 'Last Approval Status Date'
-                        else:
-                            st.error("❌ No se encontró columna de fecha de aprobación")
-                            st.write("Columnas disponibles:", df_completo.columns.tolist())
-                            st.stop()
+                    pre_output_text = pre_output.getvalue()
+                    if pre_output_text:
+                        with st.expander("📋 VER LOG DE PRE-PROCESAMIENTO (PART3_1)", expanded=False):
+                            st.code(pre_output_text, language="text")
 
-                        st.caption(f"✅ Usando columna: '{col_fecha_aprobacion}'")
+                    if df_prefiltrado is None:
+                        st.error("❌ El pre-procesamiento (part3_1) falló. Revisa el log.")
+                        st.stop()
 
-                        # Convertir fechas
-                        df_completo['last_approval_status_date'] = pd.to_datetime(
-                            df_completo[col_fecha_aprobacion],
-                            format='%d/%m/%Y',
-                            dayfirst=True,
-                            errors='coerce'
-                        )
-                        # Buscar columna start_date
-                        col_start_date = None
-                        if 'start_date' in df_completo.columns:
-                            col_start_date = 'start_date'
-                        elif 'Start Date' in df_completo.columns:
-                            col_start_date = 'Start Date'
-                        elif 'startDate' in df_completo.columns:
-                            col_start_date = 'startDate'
-                        else:
-                            st.error("❌ No se encontró columna start_date")
-                            st.stop()
-
-                        st.caption(f"✅ Usando columna: '{col_start_date}'")
-
-                        df_completo['start_date'] = pd.to_datetime(
-                            df_completo[col_start_date],
-                            format='%d/%m/%Y',
-                            dayfirst=True,
-                            errors='coerce'
-                        )
-
-                        # PASO 1: Filtrar por last_approval_status_date
-                        fu_inicio_dt = pd.to_datetime(fecha_ultima_inicio)
-                        fu_fin_dt = pd.to_datetime(fecha_ultima_fin)
-
-                        df_filtrado_fecha = df_completo[
-                            (df_completo['last_approval_status_date'] >= fu_inicio_dt) &
-                            (df_completo['last_approval_status_date'] <= fu_fin_dt)
-                        ].copy()
-                        st.caption(f"✅ Paso 1: {len(df_filtrado_fecha):,} registros con fecha_ultima en rango")
-
-                        # PASO 2: Extraer IDs únicos
-                        ids_validos = df_filtrado_fecha['id_personal'].unique()
-                        st.caption(f"✅ Paso 2: {len(ids_validos):,} IDs únicos")
-
-                        # PASO 3: Filtrar base completa por esos IDs
-                        df_filtrado_ids = df_completo[df_completo['id_personal'].isin(ids_validos)].copy()
-                        st.caption(f"✅ Paso 3: {len(df_filtrado_ids):,} registros con esos IDs")
-
-                        # DEBUG: Verificar fechas válidas en start_date
-                        fechas_validas_count = df_filtrado_ids['start_date'].notna().sum()
-                        fechas_invalidas_count = df_filtrado_ids['start_date'].isna().sum()
-                        st.caption(f"🔍 Fechas start_date válidas: {fechas_validas_count:,} | Inválidas (NaT): {fechas_invalidas_count:,}")
-
-                        # PASO 4: Filtrar por start_date (usar campos manuales)
-                        import calendar
-                        from datetime import date
-
-                        # Usar start_date_inicio manual, o calcular fin de mes automático si no hay start_date_fin
-                        sd_inicio_dt = pd.to_datetime(start_date_inicio)
-
-                        if start_date_fin:
-                            sd_fin_dt = pd.to_datetime(start_date_fin)
-                        else:
-                            # Calcular fin de mes automático
-                            ultimo_dia = calendar.monthrange(start_date_inicio.year, start_date_inicio.month)[1]
-                            ultimo_dia_mes = date(start_date_inicio.year, start_date_inicio.month, ultimo_dia)
-                            sd_fin_dt = pd.to_datetime(ultimo_dia_mes)
-
-                        # DEBUG: Mostrar rango y fechas disponibles
-                        st.caption(f"🔍 Rango start_date: {sd_inicio_dt.strftime('%d/%m/%Y')} → {sd_fin_dt.strftime('%d/%m/%Y')}")
-                        if len(df_filtrado_ids) > 0:
-                            # Filtrar fechas válidas (no NaT)
-                            fechas_validas = df_filtrado_ids['start_date'].dropna()
-                            if len(fechas_validas) > 0:
-                                fecha_min = fechas_validas.min()
-                                fecha_max = fechas_validas.max()
-                                st.caption(f"🔍 Fechas disponibles: {fecha_min.strftime('%d/%m/%Y')} → {fecha_max.strftime('%d/%m/%Y')}")
-                            else:
-                                st.warning("⚠️ Todas las fechas start_date son inválidas (NaT)")
-                        else:
-                            st.warning("⚠️ No hay registros antes del filtro de start_date")
-
-                        df_filtrado_final = df_filtrado_ids[
-                            (df_filtrado_ids['start_date'] >= sd_inicio_dt) &
-                            (df_filtrado_ids['start_date'] <= sd_fin_dt)
-                        ].copy()
-                        st.caption(f"✅ Paso 4: {len(df_filtrado_final):,} registros con start_date en mes")
-
-                        # PASO 5: Ordenar
-                        df_filtrado_final = df_filtrado_final.sort_values(
-                            by=['id_personal', 'start_date'],
-                            ascending=[True, False]
-                        )
-                        st.caption(f"✅ Paso 5: Ordenado correctamente")
-
-                        # Convertir fechas de vuelta a string
-                        df_filtrado_final['last_approval_status_date'] = df_filtrado_final['last_approval_status_date'].dt.strftime('%d/%m/%Y')
-                        df_filtrado_final['start_date'] = df_filtrado_final['start_date'].dt.strftime('%d/%m/%Y')
-
-                        # Guardar CSV filtrado (usar coma como separador para compatibilidad con part4)
-                        csv_path_filtrado = os.path.join(temp_dir, "ausentismos_PREFILTRADO.csv")
-                        df_filtrado_final.to_csv(csv_path_filtrado, index=False, encoding='utf-8', sep=',', quoting=2)
-
-                        csv_path_a_procesar = csv_path_filtrado
-                        st.success(f"✅ Pre-filtrado completo: {len(df_completo):,} → {len(df_filtrado_final):,} registros")
+                    csv_path_a_procesar = csv_path_filtrado
+                    st.success(f"✅ Pre-procesamiento listo: {len(df_prefiltrado):,} registros")
 
                     # Importar y ejecutar el procesamiento
                     import auditoria_ausentismos_part4 as part4

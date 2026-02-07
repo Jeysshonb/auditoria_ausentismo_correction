@@ -98,9 +98,6 @@ def procesar_analisis_completo():
         if 'homologacion_clase_de_ausentismo_ssf_vs_sap' not in df.columns:
             raise ValueError(f"❌ ERROR: Columna 'homologacion_clase_de_ausentismo_ssf_vs_sap' NO EXISTE en el archivo. Columnas disponibles: {list(df.columns)}")
 
-        df_filtrado_unicos = df[~df['homologacion_clase_de_ausentismo_ssf_vs_sap'].isin(CODIGOS_EXCLUIR_UNICOS)]
-        print(f"   Registros excluyendo códigos {CODIGOS_EXCLUIR_UNICOS}: {len(df_filtrado_unicos):,}")
-
         # Validar que existan las columnas CRÍTICAS requeridas
         columnas_criticas = ['id_personal', 'last_approval_status_date', 'start_date',
                              'descripcion_general_external_code']
@@ -110,38 +107,55 @@ def procesar_analisis_completo():
             print(f"   Columnas disponibles: {list(df.columns)}")
             return None, None
 
-        # Verificar columnas opcionales y advertir si faltan
-        columnas_opcionales = ['external_name_label', 'cie10_descripcion', 'end_date']
-        for col in columnas_opcionales:
-            if col not in df.columns:
-                print(f"   ⚠️ ADVERTENCIA: Columna opcional '{col}' NO existe (se usará valor por defecto)")
-            else:
-                print(f"   ✅ Columna opcional '{col}' encontrada")
+        # Verificar/agregar columnas opcionales para mantener compatibilidad
+        if 'external_name_label' not in df.columns:
+            print("   ⚠️ ADVERTENCIA: Columna opcional 'external_name_label' NO existe (se crea con 'N/A')")
+            df['external_name_label'] = 'N/A'
+        else:
+            print("   ✅ Columna opcional 'external_name_label' encontrada")
 
-        # Convertir fechas a datetime para ordenamiento correcto
-        df_filtrado_unicos['last_approval_status_date_dt'] = pd.to_datetime(
-            df_filtrado_unicos['last_approval_status_date'],
-            format='%d/%m/%Y',
+        if 'cie10_descripcion' not in df.columns:
+            print("   ⚠️ ADVERTENCIA: Columna opcional 'cie10_descripcion' NO existe (se crea vacía)")
+            df['cie10_descripcion'] = ''
+        else:
+            print("   ✅ Columna opcional 'cie10_descripcion' encontrada")
+
+        if 'end_date' not in df.columns:
+            print("   ⚠️ ADVERTENCIA: Columna opcional 'end_date' NO existe (se crea vacía)")
+            df['end_date'] = ''
+        else:
+            print("   ✅ Columna opcional 'end_date' encontrada")
+
+        # Convertir fechas una sola vez (acepta DD/MM/YYYY o YYYY-MM-DD)
+        df['last_approval_status_date'] = pd.to_datetime(
+            df['last_approval_status_date'],
+            dayfirst=True,
             errors='coerce'
         )
-        df_filtrado_unicos['start_date_dt'] = pd.to_datetime(
-            df_filtrado_unicos['start_date'],
-            format='%d/%m/%Y',
+        df['start_date'] = pd.to_datetime(
+            df['start_date'],
+            dayfirst=True,
             errors='coerce'
         )
+        df['end_date'] = pd.to_datetime(
+            df['end_date'],
+            dayfirst=True,
+            errors='coerce'
+        )
+
+        # Filtrar para registros únicos (ya con fechas convertidas)
+        df_filtrado_unicos = df[~df['homologacion_clase_de_ausentismo_ssf_vs_sap'].isin(CODIGOS_EXCLUIR_UNICOS)].copy()
+        print(f"   Registros excluyendo códigos {CODIGOS_EXCLUIR_UNICOS}: {len(df_filtrado_unicos):,}")
 
         # Ordenar por: id_personal, last_approval_status_date (desc), start_date (desc)
         # Así el registro con la fecha más reciente en start_date quedará primero
         df_filtrado_unicos = df_filtrado_unicos.sort_values(
-            by=['id_personal', 'last_approval_status_date_dt', 'start_date_dt'],
+            by=['id_personal', 'last_approval_status_date', 'start_date'],
             ascending=[True, False, False]
         )
 
         # Tomar el primer registro de cada id_personal (que ahora es el más reciente)
         df_unicos = df_filtrado_unicos.drop_duplicates(subset=['id_personal'], keep='first')
-
-        # Eliminar columnas auxiliares de datetime
-        df_unicos = df_unicos.drop(['last_approval_status_date_dt', 'start_date_dt'], axis=1)
 
         print(f"   Registros únicos (SIN códigos filtrados): {len(df_unicos):,}")
         print(f"   → Criterio: Última last_approval_status_date y start_date más reciente")
@@ -150,9 +164,13 @@ def procesar_analisis_completo():
         print(f"✅ Guardado: {os.path.basename(ruta_salida_unicos)}")
 
         # FILTRAR PARA REPORTE 30 DÍAS: INCLUIR SOLO los códigos especificados
-        df_filtrado_30dias = df[df['homologacion_clase_de_ausentismo_ssf_vs_sap'].isin(CODIGOS_INCLUIR_30DIAS)]
+        df_filtrado_30dias = df[df['homologacion_clase_de_ausentismo_ssf_vs_sap'].isin(CODIGOS_INCLUIR_30DIAS)].copy()
         print(f"   Registros CON códigos {CODIGOS_INCLUIR_30DIAS}: {len(df_filtrado_30dias):,}")
-        
+
+        df_filtrado_30dias = df_filtrado_30dias.sort_values(
+            by=['id_personal', 'start_date', 'last_approval_status_date'],
+            ascending=[True, False, False]
+        )
         df_filtrado_30dias_unicos = df_filtrado_30dias.drop_duplicates(subset=['id_personal'], keep='first')
         print(f"   IDs únicos para reporte 30 días: {len(df_filtrado_30dias_unicos):,}")
         
@@ -184,101 +202,23 @@ def procesar_analisis_completo():
         # PASO 3: PREPARAR DATOS PARA ANÁLISIS 30 DÍAS
         # ============================================================================
         print("\n3. Preparando datos para análisis 30 días...")
-        
-        # Cargar ausentismos completos
-        df_ausentismos = pd.read_csv(ruta_entrada, encoding='utf-8-sig')
-
-        # COMPATIBILIDAD: Agregar columnas opcionales si no existen
-        if 'external_name_label' not in df_ausentismos.columns:
-            print("   ⚠️ Columna 'external_name_label' no existe, agregando columna vacía")
-            df_ausentismos['external_name_label'] = 'N/A'
-
-        if 'cie10_descripcion' not in df_ausentismos.columns:
-            print("   ⚠️ Columna 'cie10_descripcion' no existe, agregando columna vacía")
-            df_ausentismos['cie10_descripcion'] = ''
-
-        if 'end_date' not in df_ausentismos.columns:
-            print("   ⚠️ Columna 'end_date' no existe, agregando columna vacía")
-            df_ausentismos['end_date'] = ''
+        print("   ℹ️ Se usan los datos ya cargados y preprocesados una sola vez")
 
         # Obtener solo los IDs únicos del filtro CON CÓDIGOS (para reporte 30 días)
         ids_filtrados = df_filtrado_30dias_unicos['id_personal'].unique()
 
-        # DEBUG: Comparar IDs antes y después del filtro
-        ids_originales_set = set(ids_filtrados)
-        ids_en_ausentismos = set(df_ausentismos[df_ausentismos['id_personal'].isin(ids_filtrados)]['id_personal'].unique())
-        ids_faltantes = ids_originales_set - ids_en_ausentismos
-
-        print(f"\n📊 DEBUG - Análisis de IDs:")
-        print(f"   • IDs en lista original: {len(ids_filtrados):,}")
-        print(f"   • IDs encontrados en df_ausentismos: {len(ids_en_ausentismos):,}")
-        print(f"   • IDs que NO se encontrarán (sin datos): {len(ids_faltantes):,}")
-
-        if len(ids_faltantes) > 0:
-            print(f"\n⚠️ ADVERTENCIA: {len(ids_faltantes)} IDs no tienen datos en df_ausentismos")
-            print(f"   Esto significa que estos IDs:")
-            print(f"   1. Estaban en df_filtrado_30dias_unicos (tenían códigos filtrados)")
-            print(f"   2. PERO no están en el CSV completo actual")
-            print(f"   3. Probablemente fueron eliminados en Paso 2 o Paso 3")
-            print(f"\n   Primeros 10 IDs faltantes:")
-            for i, id_faltante in enumerate(list(ids_faltantes)[:10], 1):
-                print(f"      {i}. ID: {id_faltante}")
-
-        df_ausentismos = df_ausentismos[df_ausentismos['id_personal'].isin(ids_filtrados)]
-        
         print(f"✅ IDs a procesar: {len(ids_filtrados):,}")
         print(f"✅ Ponderación configurada:")
         for col, peso in COLUMNAS_PONDERADAS.items():
             print(f"   • {col}: {peso*100:.0f}%")
 
-        # DEBUG: Mostrar formato de fechas antes de convertir
-        print(f"\n📅 DEBUG - Formato de fechas:")
-        print(f"   • last_approval_status_date ejemplo: {df_ausentismos['last_approval_status_date'].iloc[0] if len(df_ausentismos) > 0 else 'N/A'}")
-        print(f"   • start_date ejemplo: {df_ausentismos['start_date'].iloc[0] if len(df_ausentismos) > 0 else 'N/A'}")
+        # Filtrar por IDs
+        df_ausentismos = df[df['id_personal'].isin(ids_filtrados)].copy()
 
-        # Convertir fechas - FLEXIBLE: intenta varios formatos
-        def convertir_fecha_flexible(serie):
-            """Convierte fechas intentando varios formatos"""
-            # Primero intentar formato DD/MM/YYYY
-            resultado = pd.to_datetime(serie, format='%d/%m/%Y', errors='coerce')
-
-            # Si hay muchos NaT, intentar formato YYYY-MM-DD
-            nulos = resultado.isna().sum()
-            if nulos > len(serie) * 0.5:  # Más del 50% nulos
-                resultado_alt = pd.to_datetime(serie, format='%Y-%m-%d', errors='coerce')
-                if resultado_alt.isna().sum() < nulos:
-                    return resultado_alt
-
-            # Si aún hay muchos nulos, intentar inferir automáticamente
-            if resultado.isna().sum() > len(serie) * 0.5:
-                resultado_auto = pd.to_datetime(serie, dayfirst=True, errors='coerce')
-                if resultado_auto.isna().sum() < resultado.isna().sum():
-                    return resultado_auto
-
-            return resultado
-
-        df_ausentismos['last_approval_status_date'] = convertir_fecha_flexible(df_ausentismos['last_approval_status_date'])
-        df_ausentismos['start_date'] = convertir_fecha_flexible(df_ausentismos['start_date'])
-        df_ausentismos['end_date'] = convertir_fecha_flexible(df_ausentismos['end_date'])
-
-        # DEBUG: Mostrar cuántas fechas se convirtieron correctamente
-        print(f"   • last_approval_status_date válidas: {df_ausentismos['last_approval_status_date'].notna().sum():,}")
-        print(f"   • start_date válidas: {df_ausentismos['start_date'].notna().sum():,}")
-
-        # Limpiar códigos
-        df_ausentismos['descripcion_general_external_code'] = (
-            df_ausentismos['descripcion_general_external_code'].astype(str).str.strip()
-        )
-
-        # Eliminar registros sin datos válidos (solo fechas, no descripcion_general_external_code)
-        registros_antes = len(df_ausentismos)
-        df_ausentismos = df_ausentismos.dropna(
-            subset=['last_approval_status_date', 'start_date']
-        )
-        registros_despues = len(df_ausentismos)
-
-        if registros_antes != registros_despues:
-            print(f"   ⚠️ Se eliminaron {registros_antes - registros_despues} registros con fechas inválidas")
+        # Validar que haya datos
+        if len(df_ausentismos) == 0:
+            print("❌ ERROR: No hay datos después de filtrar por IDs")
+            return None, None
 
         print(f"✅ Registros válidos para análisis: {len(df_ausentismos):,}")
         
