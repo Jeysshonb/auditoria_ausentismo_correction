@@ -390,7 +390,15 @@ def paso2():
 
                     # Intentar leer el CSV con manejo de errores
                     try:
-                        df_ausentismo = pd.read_csv(csv_path, encoding='utf-8', sep=',', quotechar='"')
+                        df_ausentismo = pd.read_csv(
+                            csv_path,
+                            encoding='utf-8',
+                            sep=',',
+                            quotechar='"',
+                            engine='python',
+                            skipinitialspace=True,
+                            doublequote=True
+                        )
 
                         # Limpiar nombres de columnas (quitar comillas extra)
                         df_ausentismo.columns = df_ausentismo.columns.str.strip().str.strip('"').str.strip("'")
@@ -1244,12 +1252,21 @@ def paso4():
                         st.info("🔍 Aplicando pre-filtrado antes del análisis de 30 días")
 
                         # Leer CSV completo (separador: coma, con comillas en campos de texto)
-                        df_completo = pd.read_csv(csv_path_original, encoding='utf-8', sep=',', quotechar='"')
+                        df_completo = pd.read_csv(
+                            csv_path_original,
+                            encoding='utf-8',
+                            sep=',',
+                            quotechar='"',
+                            engine='python',
+                            skipinitialspace=True,
+                            doublequote=True
+                        )
 
                         # Limpiar nombres de columnas (quitar comillas extra)
                         df_completo.columns = df_completo.columns.str.strip().str.strip('"').str.strip("'")
 
                         st.caption(f"📊 Registros totales: {len(df_completo):,}")
+                        st.caption(f"🔍 Total columnas: {len(df_completo.columns)} | Primeras 3: {df_completo.columns.tolist()[:3]}")
 
                         # DEBUG: Mostrar columnas disponibles
                         with st.expander("🔍 Ver columnas del CSV", expanded=False):
