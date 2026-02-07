@@ -1227,27 +1227,104 @@ def paso4():
                     temp_dir = tempfile.mkdtemp()
                     
                     # Guardar el archivo subido
-                    csv_path = os.path.join(temp_dir, "ausentismos_completo_con_cie10.csv")
-                    with open(csv_path, "wb") as f:
+                    csv_path_original = os.path.join(temp_dir, "ausentismos_completo_con_cie10.csv")
+                    with open(csv_path_original, "wb") as f:
                         f.write(csv_paso3.getbuffer())
-                    
+
+                    # ============================================================================
+                    # PRE-FILTRADO SI HAY FILTROS ACTIVADOS
+                    # ============================================================================
+                    csv_path_a_procesar = csv_path_original
+
+                    if usar_filtro and (fecha_ultima_inicio and fecha_ultima_fin and start_date_inicio):
+                        st.info("🔍 Aplicando pre-filtrado antes del análisis de 30 días")
+
+                        # Leer CSV completo
+                        df_completo = pd.read_csv(csv_path_original, encoding='utf-8-sig', sep=';')
+                        st.caption(f"📊 Registros totales: {len(df_completo):,}")
+
+                        # Convertir fechas
+                        df_completo['last_approval_status_date'] = pd.to_datetime(
+                            df_completo['last_approval_status_date'],
+                            format='%d/%m/%Y',
+                            dayfirst=True,
+                            errors='coerce'
+                        )
+                        df_completo['start_date'] = pd.to_datetime(
+                            df_completo['start_date'],
+                            format='%d/%m/%Y',
+                            dayfirst=True,
+                            errors='coerce'
+                        )
+
+                        # PASO 1: Filtrar por last_approval_status_date
+                        fu_inicio_dt = pd.to_datetime(fecha_ultima_inicio)
+                        fu_fin_dt = pd.to_datetime(fecha_ultima_fin)
+
+                        df_filtrado_fecha = df_completo[
+                            (df_completo['last_approval_status_date'] >= fu_inicio_dt) &
+                            (df_completo['last_approval_status_date'] <= fu_fin_dt)
+                        ].copy()
+                        st.caption(f"✅ Paso 1: {len(df_filtrado_fecha):,} registros con fecha_ultima en rango")
+
+                        # PASO 2: Extraer IDs únicos
+                        ids_validos = df_filtrado_fecha['id_personal'].unique()
+                        st.caption(f"✅ Paso 2: {len(ids_validos):,} IDs únicos")
+
+                        # PASO 3: Filtrar base completa por esos IDs
+                        df_filtrado_ids = df_completo[df_completo['id_personal'].isin(ids_validos)].copy()
+                        st.caption(f"✅ Paso 3: {len(df_filtrado_ids):,} registros con esos IDs")
+
+                        # PASO 4: Filtrar por start_date (inicio mes → fin mes)
+                        import calendar
+                        from datetime import date
+                        ultimo_dia = calendar.monthrange(start_date_inicio.year, start_date_inicio.month)[1]
+                        start_date_fin_auto = date(start_date_inicio.year, start_date_inicio.month, ultimo_dia)
+
+                        sd_inicio_dt = pd.to_datetime(start_date_inicio)
+                        sd_fin_dt = pd.to_datetime(start_date_fin_auto)
+
+                        df_filtrado_final = df_filtrado_ids[
+                            (df_filtrado_ids['start_date'] >= sd_inicio_dt) &
+                            (df_filtrado_ids['start_date'] <= sd_fin_dt)
+                        ].copy()
+                        st.caption(f"✅ Paso 4: {len(df_filtrado_final):,} registros con start_date en mes")
+
+                        # PASO 5: Ordenar
+                        df_filtrado_final = df_filtrado_final.sort_values(
+                            by=['id_personal', 'start_date'],
+                            ascending=[True, False]
+                        )
+                        st.caption(f"✅ Paso 5: Ordenado correctamente")
+
+                        # Convertir fechas de vuelta a string
+                        df_filtrado_final['last_approval_status_date'] = df_filtrado_final['last_approval_status_date'].dt.strftime('%d/%m/%Y')
+                        df_filtrado_final['start_date'] = df_filtrado_final['start_date'].dt.strftime('%d/%m/%Y')
+
+                        # Guardar CSV filtrado
+                        csv_path_filtrado = os.path.join(temp_dir, "ausentismos_PREFILTRADO.csv")
+                        df_filtrado_final.to_csv(csv_path_filtrado, index=False, encoding='utf-8-sig', sep=';')
+
+                        csv_path_a_procesar = csv_path_filtrado
+                        st.success(f"✅ Pre-filtrado completo: {len(df_completo):,} → {len(df_filtrado_final):,} registros")
+
                     # Importar y ejecutar el procesamiento
                     import auditoria_ausentismos_part4 as part4
                     import importlib
                     importlib.reload(part4)
-                    
-                    # Configurar rutas
-                    part4.ruta_entrada = csv_path
+
+                    # Configurar rutas (usar CSV filtrado si existe)
+                    part4.ruta_entrada = csv_path_a_procesar
                     part4.directorio_salida = temp_dir
                     part4.ruta_salida_unicos = os.path.join(temp_dir, "Registros_unicos.csv")
                     part4.ruta_salida_30dias = os.path.join(temp_dir, "reporte_30_dias.csv")
-                    
+
                     # DEBUG: Mostrar configuración antes de procesar
-                    st.info(f"📂 Archivo temporal: {csv_path}")
+                    st.info(f"📂 Archivo a procesar: {os.path.basename(csv_path_a_procesar)}")
                     st.info(f"📁 Directorio salida: {temp_dir}")
 
                     # Ejecutar procesamiento
-                    st.write("🔄 Iniciando procesamiento...")
+                    st.write("🔄 Iniciando análisis de 30 días sobre datos filtrados...")
 
                     # CAPTURAR SALIDA DE PRINT() PARA MOSTRAR EN STREAMLIT
                     import sys
@@ -1293,14 +1370,18 @@ def paso4():
                             st.dataframe(df_reporte_30dias.head(3))
                         
                         # ============================================================================
-                        # APLICAR FILTRO DE FECHAS SI ESTÁ ACTIVADO
+                        # NOTA: El filtrado ya se aplicó ANTES del análisis
+                        # El reporte de 30 días ya contiene solo los datos filtrados
                         # ============================================================================
                         df_reporte_filtrado = None
-                        
-                        tiene_filtro = (fecha_ultima_inicio or fecha_ultima_fin or 
-                                       start_date_inicio or start_date_fin)
-                        
-                        if usar_filtro and tiene_filtro:
+
+                        # Si se aplicó pre-filtrado, el reporte ya está filtrado
+                        if usar_filtro and (fecha_ultima_inicio and fecha_ultima_fin and start_date_inicio):
+                            st.info("✅ El análisis de 30 días se ejecutó sobre datos YA filtrados")
+                            df_reporte_filtrado = df_reporte_30dias.copy()
+
+                        # Mantener lógica antigua comentada por si se necesita
+                        if False:  # Desactivado - ahora se filtra ANTES
                             st.info("🔍 Aplicando lógica de filtrado avanzado")
 
                             # Verificar que existan las columnas
