@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import io
 from io import BytesIO, StringIO
 import zipfile
 import os
@@ -1185,50 +1186,29 @@ def paso4():
                 help="Fin del rango para fecha_ultima"
             )
         
-        st.markdown("### 📋 Rango para: **start_date**")
-        col_s1, col_s2 = st.columns(2)
-        
-        with col_s1:
-            start_date_inicio = st.date_input(
-                "Fecha Inicio (start_date)",
-                value=None,
-                format="DD/MM/YYYY",
-                key="start_date_inicio",
-                help="Inicio del rango para start_date"
-            )
-        
-        with col_s2:
-            start_date_fin = st.date_input(
-                "Fecha Fin (start_date)",
-                value=None,
-                format="DD/MM/YYYY",
-                key="start_date_fin",
-                help="Fin del rango para start_date"
-            )
-        
+        st.info("ℹ️ **start_date** se filtrará automáticamente por el mes completo de 'Fecha Inicio (fecha_ultima)'")
+
         # Mostrar resumen del filtro
         tiene_filtro_fecha_ultima = fecha_ultima_inicio or fecha_ultima_fin
-        tiene_filtro_start_date = start_date_inicio or start_date_fin
-        
-        if tiene_filtro_fecha_ultima or tiene_filtro_start_date:
+
+        if tiene_filtro_fecha_ultima:
             st.divider()
             st.info("📊 **Resumen del Filtro:**")
-            
-            if tiene_filtro_fecha_ultima:
-                if fecha_ultima_inicio and fecha_ultima_fin:
-                    st.write(f"✅ **fecha_ultima**: {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}")
-                elif fecha_ultima_inicio:
-                    st.write(f"✅ **fecha_ultima**: >= {fecha_ultima_inicio.strftime('%d/%m/%Y')}")
-                elif fecha_ultima_fin:
-                    st.write(f"✅ **fecha_ultima**: <= {fecha_ultima_fin.strftime('%d/%m/%Y')}")
-            
-            if tiene_filtro_start_date:
-                if start_date_inicio and start_date_fin:
-                    st.write(f"✅ **start_date**: {start_date_inicio.strftime('%d/%m/%Y')} → {start_date_fin.strftime('%d/%m/%Y')}")
-                elif start_date_inicio:
-                    st.write(f"✅ **start_date**: >= {start_date_inicio.strftime('%d/%m/%Y')}")
-                elif start_date_fin:
-                    st.write(f"✅ **start_date**: <= {start_date_fin.strftime('%d/%m/%Y')}")
+
+            if fecha_ultima_inicio and fecha_ultima_fin:
+                st.write(f"✅ **fecha_ultima**: {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}")
+
+                # Calcular mes para start_date
+                import calendar
+                from datetime import date
+                ultimo_dia = calendar.monthrange(fecha_ultima_inicio.year, fecha_ultima_inicio.month)[1]
+                start_mes_inicio = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, 1)
+                start_mes_fin = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, ultimo_dia)
+                st.write(f"✅ **start_date** (automático): {start_mes_inicio.strftime('%d/%m/%Y')} → {start_mes_fin.strftime('%d/%m/%Y')}")
+            elif fecha_ultima_inicio:
+                st.write(f"✅ **fecha_ultima**: >= {fecha_ultima_inicio.strftime('%d/%m/%Y')}")
+            elif fecha_ultima_fin:
+                st.write(f"✅ **fecha_ultima**: <= {fecha_ultima_fin.strftime('%d/%m/%Y')}")
     
     if csv_paso3:
         st.divider()
@@ -1248,8 +1228,8 @@ def paso4():
         if btn_solo_filtrar:
             if not usar_filtro:
                 st.error("❌ Debes activar el filtro y seleccionar las fechas primero")
-            elif not (fecha_ultima_inicio and fecha_ultima_fin and start_date_inicio):
-                st.error("❌ Debes completar todas las fechas del filtro")
+            elif not (fecha_ultima_inicio and fecha_ultima_fin):
+                st.error("❌ Debes completar Fecha Inicio y Fecha Fin para fecha_ultima")
             else:
                 try:
                     with st.spinner('⏳ Aplicando pre-filtrado...'):
@@ -1308,20 +1288,22 @@ def paso4():
                         df_filtrado_ids = df_completo[df_completo['id_personal'].isin(ids_validos)].copy()
                         st.info(f"✅ Paso 3: {len(df_filtrado_ids):,} registros con esos IDs")
 
-                        # PASO 4: Filtrar por start_date
+                        # PASO 4: Filtrar por start_date (usar mes completo de fecha_ultima_inicio)
                         import calendar
                         from datetime import date
-                        ultimo_dia = calendar.monthrange(start_date_inicio.year, start_date_inicio.month)[1]
-                        start_date_fin_auto = date(start_date_inicio.year, start_date_inicio.month, ultimo_dia)
+                        # Calcular primer y último día del mes de fecha_ultima_inicio
+                        primer_dia_mes = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, 1)
+                        ultimo_dia = calendar.monthrange(fecha_ultima_inicio.year, fecha_ultima_inicio.month)[1]
+                        ultimo_dia_mes = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, ultimo_dia)
 
-                        sd_inicio_dt = pd.to_datetime(start_date_inicio)
-                        sd_fin_dt = pd.to_datetime(start_date_fin_auto)
+                        sd_inicio_dt = pd.to_datetime(primer_dia_mes)
+                        sd_fin_dt = pd.to_datetime(ultimo_dia_mes)
 
                         df_filtrado_final = df_filtrado_ids[
                             (df_filtrado_ids['start_date'] >= sd_inicio_dt) &
                             (df_filtrado_ids['start_date'] <= sd_fin_dt)
                         ].copy()
-                        st.info(f"✅ Paso 4: {len(df_filtrado_final):,} registros con start_date en mes {start_date_inicio.strftime('%B %Y')}")
+                        st.info(f"✅ Paso 4: {len(df_filtrado_final):,} registros con start_date en mes {fecha_ultima_inicio.strftime('%B %Y')}")
 
                         # PASO 5: Ordenar
                         df_filtrado_final = df_filtrado_final.sort_values(
@@ -1335,8 +1317,8 @@ def paso4():
                         df_filtrado_final['start_date'] = df_filtrado_final['start_date'].dt.strftime('%d/%m/%Y')
 
                         # Convertir a CSV
-                        csv_buffer = StringIO()
-                        df_filtrado_final.to_csv(csv_buffer, index=False, encoding='utf-8', sep=',', quoting=2)
+                        csv_buffer = io.StringIO()
+                        df_filtrado_final.to_csv(csv_buffer, index=False, sep=',', quoting=2)
                         csv_data = csv_buffer.getvalue()
 
                         st.success(f"✅ Pre-filtrado completo: {len(df_completo):,} → {len(df_filtrado_final):,} registros")
@@ -1345,7 +1327,7 @@ def paso4():
                         st.download_button(
                             label="⬇️ DESCARGAR CSV PRE-FILTRADO",
                             data=csv_data,
-                            file_name=f"ausentismos_PREFILTRADO_{start_date_inicio.strftime('%Y%m')}.csv",
+                            file_name=f"ausentismos_PREFILTRADO_{fecha_ultima_inicio.strftime('%Y%m')}.csv",
                             mime="text/csv",
                             use_container_width=True,
                             type="primary"
@@ -1376,7 +1358,7 @@ def paso4():
                     # ============================================================================
                     csv_path_a_procesar = csv_path_original
 
-                    if usar_filtro and (fecha_ultima_inicio and fecha_ultima_fin and start_date_inicio):
+                    if usar_filtro and (fecha_ultima_inicio and fecha_ultima_fin):
                         st.info("🔍 Aplicando pre-filtrado antes del análisis de 30 días")
 
                         # Leer CSV completo (separador: coma, con comillas en campos de texto)
@@ -1464,14 +1446,16 @@ def paso4():
                         fechas_invalidas_count = df_filtrado_ids['start_date'].isna().sum()
                         st.caption(f"🔍 Fechas start_date válidas: {fechas_validas_count:,} | Inválidas (NaT): {fechas_invalidas_count:,}")
 
-                        # PASO 4: Filtrar por start_date (inicio mes → fin mes)
+                        # PASO 4: Filtrar por start_date (mes completo de fecha_ultima_inicio)
                         import calendar
                         from datetime import date
-                        ultimo_dia = calendar.monthrange(start_date_inicio.year, start_date_inicio.month)[1]
-                        start_date_fin_auto = date(start_date_inicio.year, start_date_inicio.month, ultimo_dia)
+                        # Calcular primer y último día del mes de fecha_ultima_inicio
+                        primer_dia_mes = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, 1)
+                        ultimo_dia = calendar.monthrange(fecha_ultima_inicio.year, fecha_ultima_inicio.month)[1]
+                        ultimo_dia_mes = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, ultimo_dia)
 
-                        sd_inicio_dt = pd.to_datetime(start_date_inicio)
-                        sd_fin_dt = pd.to_datetime(start_date_fin_auto)
+                        sd_inicio_dt = pd.to_datetime(primer_dia_mes)
+                        sd_fin_dt = pd.to_datetime(ultimo_dia_mes)
 
                         # DEBUG: Mostrar rango y fechas disponibles
                         st.caption(f"🔍 Rango start_date: {sd_inicio_dt.strftime('%d/%m/%Y')} → {sd_fin_dt.strftime('%d/%m/%Y')}")
@@ -1582,7 +1566,7 @@ def paso4():
                         df_reporte_filtrado = None
 
                         # Si se aplicó pre-filtrado, el reporte ya está filtrado
-                        if usar_filtro and (fecha_ultima_inicio and fecha_ultima_fin and start_date_inicio):
+                        if usar_filtro and (fecha_ultima_inicio and fecha_ultima_fin):
                             st.info("✅ El análisis de 30 días se ejecutó sobre datos YA filtrados")
                             df_reporte_filtrado = df_reporte_30dias.copy()
 
