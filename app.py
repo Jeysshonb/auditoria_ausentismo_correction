@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from io import BytesIO
+from io import BytesIO, StringIO
 import zipfile
 import os
 import tempfile
@@ -1232,8 +1232,136 @@ def paso4():
     
     if csv_paso3:
         st.divider()
-        
-        if st.button("🚀 PROCESAR ANÁLISIS", use_container_width=True, type="primary"):
+
+        # Botones en columnas
+        col_btn1, col_btn2 = st.columns(2)
+
+        with col_btn1:
+            btn_solo_filtrar = st.button("📥 SOLO PRE-FILTRAR", use_container_width=True, help="Solo aplica el pre-filtrado y descarga el CSV sin ejecutar análisis de 30 días")
+
+        with col_btn2:
+            btn_procesar_todo = st.button("🚀 PROCESAR ANÁLISIS COMPLETO", use_container_width=True, type="primary", help="Pre-filtrado + Análisis de 30 días")
+
+        # ========================================================================
+        # BOTÓN 1: SOLO PRE-FILTRAR Y DESCARGAR
+        # ========================================================================
+        if btn_solo_filtrar:
+            if not usar_filtro:
+                st.error("❌ Debes activar el filtro y seleccionar las fechas primero")
+            elif not (fecha_ultima_inicio and fecha_ultima_fin and start_date_inicio):
+                st.error("❌ Debes completar todas las fechas del filtro")
+            else:
+                try:
+                    with st.spinner('⏳ Aplicando pre-filtrado...'):
+                        temp_dir = tempfile.mkdtemp()
+
+                        # Guardar el archivo subido
+                        csv_path_original = os.path.join(temp_dir, "ausentismos_completo_con_cie10.csv")
+                        with open(csv_path_original, "wb") as f:
+                            f.write(csv_paso3.getbuffer())
+
+                        # Leer CSV completo
+                        df_completo = pd.read_csv(
+                            csv_path_original,
+                            encoding='utf-8',
+                            sep=',',
+                            quotechar='"',
+                            engine='python',
+                            skipinitialspace=True,
+                            doublequote=True
+                        )
+
+                        # Limpiar nombres de columnas
+                        df_completo.columns = df_completo.columns.str.strip().str.strip('"').str.strip("'")
+
+                        st.info(f"📊 Registros totales: {len(df_completo):,}")
+
+                        # Convertir fechas
+                        df_completo['last_approval_status_date'] = pd.to_datetime(
+                            df_completo['last_approval_status_date'],
+                            format='%d/%m/%Y',
+                            dayfirst=True,
+                            errors='coerce'
+                        )
+                        df_completo['start_date'] = pd.to_datetime(
+                            df_completo['start_date'],
+                            format='%d/%m/%Y',
+                            dayfirst=True,
+                            errors='coerce'
+                        )
+
+                        # PASO 1: Filtrar por last_approval_status_date
+                        fu_inicio_dt = pd.to_datetime(fecha_ultima_inicio)
+                        fu_fin_dt = pd.to_datetime(fecha_ultima_fin)
+
+                        df_filtrado_fecha = df_completo[
+                            (df_completo['last_approval_status_date'] >= fu_inicio_dt) &
+                            (df_completo['last_approval_status_date'] <= fu_fin_dt)
+                        ].copy()
+                        st.info(f"✅ Paso 1: {len(df_filtrado_fecha):,} registros con fecha_ultima en rango")
+
+                        # PASO 2: Extraer IDs únicos
+                        ids_validos = df_filtrado_fecha['id_personal'].unique()
+                        st.info(f"✅ Paso 2: {len(ids_validos):,} IDs únicos")
+
+                        # PASO 3: Filtrar base completa por esos IDs
+                        df_filtrado_ids = df_completo[df_completo['id_personal'].isin(ids_validos)].copy()
+                        st.info(f"✅ Paso 3: {len(df_filtrado_ids):,} registros con esos IDs")
+
+                        # PASO 4: Filtrar por start_date
+                        import calendar
+                        from datetime import date
+                        ultimo_dia = calendar.monthrange(start_date_inicio.year, start_date_inicio.month)[1]
+                        start_date_fin_auto = date(start_date_inicio.year, start_date_inicio.month, ultimo_dia)
+
+                        sd_inicio_dt = pd.to_datetime(start_date_inicio)
+                        sd_fin_dt = pd.to_datetime(start_date_fin_auto)
+
+                        df_filtrado_final = df_filtrado_ids[
+                            (df_filtrado_ids['start_date'] >= sd_inicio_dt) &
+                            (df_filtrado_ids['start_date'] <= sd_fin_dt)
+                        ].copy()
+                        st.info(f"✅ Paso 4: {len(df_filtrado_final):,} registros con start_date en mes {start_date_inicio.strftime('%B %Y')}")
+
+                        # PASO 5: Ordenar
+                        df_filtrado_final = df_filtrado_final.sort_values(
+                            by=['id_personal', 'start_date'],
+                            ascending=[True, False]
+                        )
+                        st.info(f"✅ Paso 5: Ordenado correctamente")
+
+                        # Convertir fechas de vuelta a string
+                        df_filtrado_final['last_approval_status_date'] = df_filtrado_final['last_approval_status_date'].dt.strftime('%d/%m/%Y')
+                        df_filtrado_final['start_date'] = df_filtrado_final['start_date'].dt.strftime('%d/%m/%Y')
+
+                        # Convertir a CSV
+                        csv_buffer = io.StringIO()
+                        df_filtrado_final.to_csv(csv_buffer, index=False, encoding='utf-8', sep=',', quoting=2)
+                        csv_data = csv_buffer.getvalue()
+
+                        st.success(f"✅ Pre-filtrado completo: {len(df_completo):,} → {len(df_filtrado_final):,} registros")
+
+                        # Botón de descarga
+                        st.download_button(
+                            label="⬇️ DESCARGAR CSV PRE-FILTRADO",
+                            data=csv_data,
+                            file_name=f"ausentismos_PREFILTRADO_{start_date_inicio.strftime('%Y%m')}.csv",
+                            mime="text/csv",
+                            use_container_width=True,
+                            type="primary"
+                        )
+
+                        st.info("💡 Ahora puedes usar este CSV en el análisis de 30 días manualmente")
+
+                except Exception as e:
+                    st.error(f"❌ Error en pre-filtrado: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+
+        # ========================================================================
+        # BOTÓN 2: PROCESAR ANÁLISIS COMPLETO
+        # ========================================================================
+        if btn_procesar_todo:
             try:
                 with st.spinner('⏳ Ejecutando análisis de 30 días...'):
                     temp_dir = tempfile.mkdtemp()
