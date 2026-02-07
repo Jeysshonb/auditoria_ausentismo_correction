@@ -1241,6 +1241,10 @@ def paso4():
 
                         # Leer CSV completo
                         df_completo = pd.read_csv(csv_path_original, encoding='utf-8-sig', sep=';')
+
+                        # Limpiar nombres de columnas (quitar comillas extra)
+                        df_completo.columns = df_completo.columns.str.strip().str.strip('"').str.strip("'")
+
                         st.caption(f"📊 Registros totales: {len(df_completo):,}")
 
                         # DEBUG: Mostrar columnas disponibles
