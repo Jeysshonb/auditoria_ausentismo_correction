@@ -117,18 +117,16 @@ def aplicar_prefiltrado():
         for i, val in enumerate(df_completo['start_date'].head(10), 1):
             print(f"      {i}. [{type(val).__name__}] '{val}'")
 
-        # Intentar conversión
+        # Intentar conversión (formato ISO: YYYY-MM-DD)
         df_completo['last_approval_status_date'] = pd.to_datetime(
             df_completo['last_approval_status_date'],
-            format='%d/%m/%Y',
-            dayfirst=True,
+            format='%Y-%m-%d',
             errors='coerce'
         )
 
         df_completo['start_date'] = pd.to_datetime(
             df_completo['start_date'],
-            format='%d/%m/%Y',
-            dayfirst=True,
+            format='%Y-%m-%d',
             errors='coerce'
         )
 
