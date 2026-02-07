@@ -1135,26 +1135,28 @@ def paso3_1():
         st.success(f"✅ Archivo cargado: {csv_paso3.name}")
 
         # Filtros
-        st.markdown("### 📅 Configurar Filtros")
+        st.markdown("### 📅 Configurar Filtros (OPCIONAL)")
+
+        st.info("💡 **Deja las fechas vacías para procesar TODO el archivo SIN filtros**")
 
         col_f1, col_f2 = st.columns(2)
 
         with col_f1:
             fecha_ultima_inicio = st.date_input(
-                "Fecha Inicio (fecha_ultima)",
+                "Fecha Inicio (fecha_ultima) - OPCIONAL",
                 value=None,
                 format="DD/MM/YYYY",
                 key="fecha_ultima_inicio_prep",
-                help="Inicio del rango para last_approval_status_date"
+                help="Inicio del rango para last_approval_status_date. Dejar vacío para procesar TODO"
             )
 
         with col_f2:
             fecha_ultima_fin = st.date_input(
-                "Fecha Fin (fecha_ultima)",
+                "Fecha Fin (fecha_ultima) - OPCIONAL",
                 value=None,
                 format="DD/MM/YYYY",
                 key="fecha_ultima_fin_prep",
-                help="Fin del rango para last_approval_status_date"
+                help="Fin del rango para last_approval_status_date. Dejar vacío para procesar TODO"
             )
 
         # Mostrar información del filtro
@@ -1167,20 +1169,25 @@ def paso3_1():
             start_mes_inicio = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, 1)
             start_mes_fin = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, ultimo_dia)
 
-            st.info(f"""
+            st.warning(f"""
             **Filtros que se aplicarán:**
 
             ✅ **last_approval_status_date**: {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}
 
             ✅ **start_date** (automático): {start_mes_inicio.strftime('%d/%m/%Y')} → {start_mes_fin.strftime('%d/%m/%Y')} (mes completo)
             """)
+        elif not fecha_ultima_inicio and not fecha_ultima_fin:
+            st.success("✅ **Modo SIN FILTROS**: Se procesará TODO el archivo")
+        else:
+            st.warning("⚠️ Completa AMBAS fechas o deja AMBAS vacías")
 
         st.divider()
 
         # Botón de procesamiento
         if st.button("🚀 EJECUTAR PRE-PROCESAMIENTO", use_container_width=True, type="primary"):
-            if not (fecha_ultima_inicio and fecha_ultima_fin):
-                st.error("❌ Debes completar ambas fechas de filtro")
+            # Validar: o ambas fechas completas, o ambas vacías
+            if (fecha_ultima_inicio and not fecha_ultima_fin) or (not fecha_ultima_inicio and fecha_ultima_fin):
+                st.error("❌ Debes completar AMBAS fechas o dejar AMBAS vacías")
             else:
                 try:
                     with st.spinner('⏳ Ejecutando pre-procesamiento...'):

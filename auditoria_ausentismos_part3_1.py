@@ -61,13 +61,18 @@ def aplicar_prefiltrado():
         print(f"❌ ERROR: No se encuentra el archivo: {ruta_entrada}")
         return None
 
-    if not fecha_ultima_inicio or not fecha_ultima_fin:
-        print("❌ ERROR: Fechas de filtro no configuradas")
-        return None
-
     if not ruta_salida:
         print("❌ ERROR: ruta_salida no está configurada")
         return None
+
+    # Modo con o sin filtros
+    modo_sin_filtros = (fecha_ultima_inicio is None or fecha_ultima_fin is None)
+
+    if modo_sin_filtros:
+        print("\n🔓 MODO SIN FILTROS: Se procesará TODO el archivo")
+    else:
+        print(f"\n🔒 MODO CON FILTROS:")
+        print(f"   • fecha_ultima: {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}")
 
     try:
         # ========================================================================
@@ -149,174 +154,200 @@ def aplicar_prefiltrado():
                 print(f"      '{val}'")
 
         # ========================================================================
-        # PASO 1: FILTRAR POR LAST_APPROVAL_STATUS_DATE
+        # DECIDIR SI APLICAR FILTROS O NO
         # ========================================================================
-        print(f"\n[PASO 1] Filtrando por last_approval_status_date...")
+        if modo_sin_filtros:
+            # SIN FILTROS: Solo ordenar
+            print("\n" + "=" * 80)
+            print("MODO SIN FILTROS: PROCESANDO TODO EL ARCHIVO")
+            print("=" * 80)
 
-        # DEBUG: Mostrar fechas disponibles en last_approval_status_date ANTES de filtrar
-        fechas_validas_ultima = df_completo['last_approval_status_date'].dropna()
-        if len(fechas_validas_ultima) > 0:
-            fecha_min_ultima = fechas_validas_ultima.min()
-            fecha_max_ultima = fechas_validas_ultima.max()
-            print(f"\n🔍 DEBUG - Fechas last_approval_status_date DISPONIBLES en el CSV:")
-            print(f"   • Mínima: {fecha_min_ultima.strftime('%d/%m/%Y')}")
-            print(f"   • Máxima: {fecha_max_ultima.strftime('%d/%m/%Y')}")
-            print(f"   • Total válidas: {len(fechas_validas_ultima):,}")
+            df_filtrado_final = df_completo.copy()
 
-            # Muestra de fechas
-            print(f"\n   📋 Muestra de fechas (primeras 10):")
-            muestra = fechas_validas_ultima.head(10)
-            for i, fecha in enumerate(muestra, 1):
-                print(f"      {i}. {fecha.strftime('%d/%m/%Y')}")
+            # Solo ordenar
+            print(f"\n[ORDENAMIENTO] Ordenando registros...")
+            df_filtrado_final = df_filtrado_final.sort_values(
+                by=['id_personal', 'start_date'],
+                ascending=[True, False],
+                na_position='last'
+            )
+            print(f"✅ Ordenado correctamente")
 
-            # Distribución por mes
-            df_temp = df_completo.copy()
-            df_temp['mes_ultima'] = df_temp['last_approval_status_date'].dt.to_period('M')
-            conteo_por_mes = df_temp['mes_ultima'].value_counts().head(10)
-            print(f"\n   📊 Registros por mes (top 10):")
-            for mes, count in conteo_por_mes.items():
-                if pd.notna(mes):
-                    print(f"      {mes}: {count:,} registros")
         else:
-            print(f"\n⚠️ ADVERTENCIA: No hay fechas last_approval_status_date válidas en el CSV")
+            # CON FILTROS: Aplicar 5 pasos
+            print("\n" + "=" * 80)
+            print("MODO CON FILTROS: APLICANDO 5 PASOS")
+            print("=" * 80)
 
-        print(f"\n   🎯 FILTRO QUE SE VA A APLICAR:")
-        print(f"   Rango: {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}")
+            # ========================================================================
+            # PASO 1: FILTRAR POR LAST_APPROVAL_STATUS_DATE
+            # ========================================================================
+            print(f"\n[PASO 1] Filtrando por last_approval_status_date...")
 
-        fu_inicio_dt = pd.to_datetime(fecha_ultima_inicio)
-        fu_fin_dt = pd.to_datetime(fecha_ultima_fin)
-
-        print(f"\n   🔍 DEBUG - Valores datetime del filtro:")
-        print(f"   fu_inicio_dt: {fu_inicio_dt}")
-        print(f"   fu_fin_dt: {fu_fin_dt}")
-
-        df_filtrado_fecha = df_completo[
-            (df_completo['last_approval_status_date'] >= fu_inicio_dt) &
-            (df_completo['last_approval_status_date'] <= fu_fin_dt)
-        ].copy()
-
-        print(f"\n✅ Registros con fecha_ultima en rango: {len(df_filtrado_fecha):,}")
-
-        # DEBUG: Si queda en 0, mostrar por qué
-        if len(df_filtrado_fecha) == 0:
-            print(f"\n⚠️ ADVERTENCIA: 0 registros después de filtrar por last_approval_status_date")
-            print(f"   Posibles causas:")
-            print(f"   1. No hay registros con last_approval_status_date en el rango {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}")
-            print(f"   2. El rango de fechas seleccionado no coincide con los datos")
-            print(f"   3. Las fechas están en zona horaria diferente")
-
-            # Verificar si hay fechas cercanas al rango
+            # DEBUG: Mostrar fechas disponibles en last_approval_status_date ANTES de filtrar
+            fechas_validas_ultima = df_completo['last_approval_status_date'].dropna()
             if len(fechas_validas_ultima) > 0:
-                # Contar cuántas fechas hay en el mes seleccionado
-                mes_inicio = pd.Period(fecha_ultima_inicio, freq='M')
-                df_temp = df_completo.copy()
-                df_temp['mes_ultima'] = df_temp['last_approval_status_date'].dt.to_period('M')
-                registros_mes = (df_temp['mes_ultima'] == mes_inicio).sum()
-                print(f"\n   📊 Registros en el mes {mes_inicio}: {registros_mes:,}")
+                fecha_min_ultima = fechas_validas_ultima.min()
+                fecha_max_ultima = fechas_validas_ultima.max()
+                print(f"\n🔍 DEBUG - Fechas last_approval_status_date DISPONIBLES en el CSV:")
+                print(f"   • Mínima: {fecha_min_ultima.strftime('%d/%m/%Y')}")
+                print(f"   • Máxima: {fecha_max_ultima.strftime('%d/%m/%Y')}")
+                print(f"   • Total válidas: {len(fechas_validas_ultima):,}")
 
-                # Mostrar fechas más cercanas al inicio del rango
-                diferencia_dias = (df_completo['last_approval_status_date'] - fu_inicio_dt).abs()
-                indices_cercanos = diferencia_dias.nsmallest(5).index
-                print(f"\n   📅 Fechas más cercanas a {fecha_ultima_inicio.strftime('%d/%m/%Y')}:")
-                for idx in indices_cercanos:
-                    fecha = df_completo.loc[idx, 'last_approval_status_date']
-                    if pd.notna(fecha):
-                        dias_diff = (fecha - fu_inicio_dt).days
-                        print(f"      {fecha.strftime('%d/%m/%Y')} (diferencia: {dias_diff} días)")
-
-        # Si hay registros, mostrar muestra
-        elif len(df_filtrado_fecha) > 0:
-            print(f"\n   ✅ Muestra de registros filtrados (primeros 5):")
-            muestra_filtrada = df_filtrado_fecha['last_approval_status_date'].head(5)
-            for i, fecha in enumerate(muestra_filtrada, 1):
-                print(f"      {i}. {fecha.strftime('%d/%m/%Y')}")
-
-        # ========================================================================
-        # PASO 2: EXTRAER IDs ÚNICOS
-        # ========================================================================
-        print(f"\n[PASO 2] Extrayendo id_personal únicos...")
-
-        ids_validos = df_filtrado_fecha['id_personal'].unique()
-
-        print(f"✅ IDs únicos: {len(ids_validos):,}")
-
-        # ========================================================================
-        # PASO 3: FILTRAR BASE COMPLETA POR ESOS IDs
-        # ========================================================================
-        print(f"\n[PASO 3] Filtrando base completa por esos IDs...")
-
-        df_filtrado_ids = df_completo[df_completo['id_personal'].isin(ids_validos)].copy()
-
-        print(f"✅ Registros con esos IDs: {len(df_filtrado_ids):,}")
-
-        # DEBUG: Mostrar fechas disponibles en start_date
-        fechas_validas_start = df_filtrado_ids['start_date'].dropna()
-        if len(fechas_validas_start) > 0:
-            fecha_min_start = fechas_validas_start.min()
-            fecha_max_start = fechas_validas_start.max()
-            print(f"\n🔍 DEBUG - Fechas start_date disponibles:")
-            print(f"   • Mínima: {fecha_min_start.strftime('%d/%m/%Y')}")
-            print(f"   • Máxima: {fecha_max_start.strftime('%d/%m/%Y')}")
-            print(f"   • Total válidas: {len(fechas_validas_start):,}")
-        else:
-            print(f"\n⚠️ ADVERTENCIA: No hay fechas start_date válidas en los datos filtrados")
-
-        # ========================================================================
-        # PASO 4: FILTRAR POR START_DATE (MES COMPLETO)
-        # ========================================================================
-        print(f"\n[PASO 4] Filtrando por start_date (mes completo)...")
-
-        # Calcular primer y último día del mes de fecha_ultima_inicio
-        primer_dia_mes = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, 1)
-        ultimo_dia = calendar.monthrange(fecha_ultima_inicio.year, fecha_ultima_inicio.month)[1]
-        ultimo_dia_mes = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, ultimo_dia)
-
-        print(f"   Rango: {primer_dia_mes.strftime('%d/%m/%Y')} → {ultimo_dia_mes.strftime('%d/%m/%Y')}")
-
-        sd_inicio_dt = pd.to_datetime(primer_dia_mes)
-        sd_fin_dt = pd.to_datetime(ultimo_dia_mes)
-
-        df_filtrado_final = df_filtrado_ids[
-            (df_filtrado_ids['start_date'] >= sd_inicio_dt) &
-            (df_filtrado_ids['start_date'] <= sd_fin_dt)
-        ].copy()
-
-        print(f"✅ Registros con start_date en mes: {len(df_filtrado_final):,}")
-
-        # DEBUG: Si queda en 0, mostrar por qué
-        if len(df_filtrado_final) == 0:
-            print(f"\n⚠️ ADVERTENCIA: 0 registros después de filtrar por start_date")
-            print(f"   Posibles causas:")
-            print(f"   1. No hay registros con start_date en {primer_dia_mes.strftime('%B %Y')}")
-            print(f"   2. Las fechas están en formato diferente")
-            print(f"   3. El mes seleccionado no tiene datos")
-
-            # Mostrar muestra de fechas que SÍ existen
-            if len(fechas_validas_start) > 0:
-                print(f"\n   📋 Muestra de fechas start_date que SÍ existen:")
-                muestra = fechas_validas_start.head(10)
+                # Muestra de fechas
+                print(f"\n   📋 Muestra de fechas (primeras 10):")
+                muestra = fechas_validas_ultima.head(10)
                 for i, fecha in enumerate(muestra, 1):
                     print(f"      {i}. {fecha.strftime('%d/%m/%Y')}")
 
-                # Contar registros por mes
-                df_filtrado_ids['mes_start'] = df_filtrado_ids['start_date'].dt.to_period('M')
-                conteo_por_mes = df_filtrado_ids['mes_start'].value_counts().head(5)
-                print(f"\n   📊 Registros por mes (top 5):")
+                # Distribución por mes
+                df_temp = df_completo.copy()
+                df_temp['mes_ultima'] = df_temp['last_approval_status_date'].dt.to_period('M')
+                conteo_por_mes = df_temp['mes_ultima'].value_counts().head(10)
+                print(f"\n   📊 Registros por mes (top 10):")
                 for mes, count in conteo_por_mes.items():
-                    print(f"      {mes}: {count:,} registros")
-                df_filtrado_ids = df_filtrado_ids.drop('mes_start', axis=1)
+                    if pd.notna(mes):
+                        print(f"      {mes}: {count:,} registros")
+            else:
+                print(f"\n⚠️ ADVERTENCIA: No hay fechas last_approval_status_date válidas en el CSV")
 
-        # ========================================================================
-        # PASO 5: ORDENAR
-        # ========================================================================
-        print(f"\n[PASO 5] Ordenando registros...")
+            print(f"\n   🎯 FILTRO QUE SE VA A APLICAR:")
+            print(f"   Rango: {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}")
 
-        df_filtrado_final = df_filtrado_final.sort_values(
-            by=['id_personal', 'start_date'],
-            ascending=[True, False]  # id_personal menor→mayor, start_date reciente→antiguo
-        )
+            fu_inicio_dt = pd.to_datetime(fecha_ultima_inicio)
+            fu_fin_dt = pd.to_datetime(fecha_ultima_fin)
 
-        print(f"✅ Ordenado correctamente")
+            print(f"\n   🔍 DEBUG - Valores datetime del filtro:")
+            print(f"   fu_inicio_dt: {fu_inicio_dt}")
+            print(f"   fu_fin_dt: {fu_fin_dt}")
+
+            df_filtrado_fecha = df_completo[
+                (df_completo['last_approval_status_date'] >= fu_inicio_dt) &
+                (df_completo['last_approval_status_date'] <= fu_fin_dt)
+            ].copy()
+
+            print(f"\n✅ Registros con fecha_ultima en rango: {len(df_filtrado_fecha):,}")
+
+            # DEBUG: Si queda en 0, mostrar por qué
+            if len(df_filtrado_fecha) == 0:
+                print(f"\n⚠️ ADVERTENCIA: 0 registros después de filtrar por last_approval_status_date")
+                print(f"   Posibles causas:")
+                print(f"   1. No hay registros con last_approval_status_date en el rango {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}")
+                print(f"   2. El rango de fechas seleccionado no coincide con los datos")
+                print(f"   3. Las fechas están en zona horaria diferente")
+
+                # Verificar si hay fechas cercanas al rango
+                if len(fechas_validas_ultima) > 0:
+                    # Contar cuántas fechas hay en el mes seleccionado
+                    mes_inicio = pd.Period(fecha_ultima_inicio, freq='M')
+                    df_temp = df_completo.copy()
+                    df_temp['mes_ultima'] = df_temp['last_approval_status_date'].dt.to_period('M')
+                    registros_mes = (df_temp['mes_ultima'] == mes_inicio).sum()
+                    print(f"\n   📊 Registros en el mes {mes_inicio}: {registros_mes:,}")
+
+                    # Mostrar fechas más cercanas al inicio del rango
+                    diferencia_dias = (df_completo['last_approval_status_date'] - fu_inicio_dt).abs()
+                    indices_cercanos = diferencia_dias.nsmallest(5).index
+                    print(f"\n   📅 Fechas más cercanas a {fecha_ultima_inicio.strftime('%d/%m/%Y')}:")
+                    for idx in indices_cercanos:
+                        fecha = df_completo.loc[idx, 'last_approval_status_date']
+                        if pd.notna(fecha):
+                            dias_diff = (fecha - fu_inicio_dt).days
+                            print(f"      {fecha.strftime('%d/%m/%Y')} (diferencia: {dias_diff} días)")
+
+            # Si hay registros, mostrar muestra
+            elif len(df_filtrado_fecha) > 0:
+                print(f"\n   ✅ Muestra de registros filtrados (primeros 5):")
+                muestra_filtrada = df_filtrado_fecha['last_approval_status_date'].head(5)
+                for i, fecha in enumerate(muestra_filtrada, 1):
+                    print(f"      {i}. {fecha.strftime('%d/%m/%Y')}")
+
+            # ========================================================================
+            # PASO 2: EXTRAER IDs ÚNICOS
+            # ========================================================================
+            print(f"\n[PASO 2] Extrayendo id_personal únicos...")
+
+            ids_validos = df_filtrado_fecha['id_personal'].unique()
+
+            print(f"✅ IDs únicos: {len(ids_validos):,}")
+
+            # ========================================================================
+            # PASO 3: FILTRAR BASE COMPLETA POR ESOS IDs
+            # ========================================================================
+            print(f"\n[PASO 3] Filtrando base completa por esos IDs...")
+
+            df_filtrado_ids = df_completo[df_completo['id_personal'].isin(ids_validos)].copy()
+
+            print(f"✅ Registros con esos IDs: {len(df_filtrado_ids):,}")
+
+            # DEBUG: Mostrar fechas disponibles en start_date
+            fechas_validas_start = df_filtrado_ids['start_date'].dropna()
+            if len(fechas_validas_start) > 0:
+                fecha_min_start = fechas_validas_start.min()
+                fecha_max_start = fechas_validas_start.max()
+                print(f"\n🔍 DEBUG - Fechas start_date disponibles:")
+                print(f"   • Mínima: {fecha_min_start.strftime('%d/%m/%Y')}")
+                print(f"   • Máxima: {fecha_max_start.strftime('%d/%m/%Y')}")
+                print(f"   • Total válidas: {len(fechas_validas_start):,}")
+            else:
+                print(f"\n⚠️ ADVERTENCIA: No hay fechas start_date válidas en los datos filtrados")
+
+            # ========================================================================
+            # PASO 4: FILTRAR POR START_DATE (MES COMPLETO)
+            # ========================================================================
+            print(f"\n[PASO 4] Filtrando por start_date (mes completo)...")
+
+            # Calcular primer y último día del mes de fecha_ultima_inicio
+            primer_dia_mes = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, 1)
+            ultimo_dia = calendar.monthrange(fecha_ultima_inicio.year, fecha_ultima_inicio.month)[1]
+            ultimo_dia_mes = date(fecha_ultima_inicio.year, fecha_ultima_inicio.month, ultimo_dia)
+
+            print(f"   Rango: {primer_dia_mes.strftime('%d/%m/%Y')} → {ultimo_dia_mes.strftime('%d/%m/%Y')}")
+
+            sd_inicio_dt = pd.to_datetime(primer_dia_mes)
+            sd_fin_dt = pd.to_datetime(ultimo_dia_mes)
+
+            df_filtrado_final = df_filtrado_ids[
+                (df_filtrado_ids['start_date'] >= sd_inicio_dt) &
+                (df_filtrado_ids['start_date'] <= sd_fin_dt)
+            ].copy()
+
+            print(f"✅ Registros con start_date en mes: {len(df_filtrado_final):,}")
+
+            # DEBUG: Si queda en 0, mostrar por qué
+            if len(df_filtrado_final) == 0:
+                print(f"\n⚠️ ADVERTENCIA: 0 registros después de filtrar por start_date")
+                print(f"   Posibles causas:")
+                print(f"   1. No hay registros con start_date en {primer_dia_mes.strftime('%B %Y')}")
+                print(f"   2. Las fechas están en formato diferente")
+                print(f"   3. El mes seleccionado no tiene datos")
+
+                # Mostrar muestra de fechas que SÍ existen
+                if len(fechas_validas_start) > 0:
+                    print(f"\n   📋 Muestra de fechas start_date que SÍ existen:")
+                    muestra = fechas_validas_start.head(10)
+                    for i, fecha in enumerate(muestra, 1):
+                        print(f"      {i}. {fecha.strftime('%d/%m/%Y')}")
+
+                    # Contar registros por mes
+                    df_filtrado_ids['mes_start'] = df_filtrado_ids['start_date'].dt.to_period('M')
+                    conteo_por_mes = df_filtrado_ids['mes_start'].value_counts().head(5)
+                    print(f"\n   📊 Registros por mes (top 5):")
+                    for mes, count in conteo_por_mes.items():
+                        print(f"      {mes}: {count:,} registros")
+                    df_filtrado_ids = df_filtrado_ids.drop('mes_start', axis=1)
+
+            # ========================================================================
+            # PASO 5: ORDENAR
+            # ========================================================================
+            print(f"\n[PASO 5] Ordenando registros...")
+
+            df_filtrado_final = df_filtrado_final.sort_values(
+                by=['id_personal', 'start_date'],
+                ascending=[True, False]  # id_personal menor→mayor, start_date reciente→antiguo
+            )
+
+            print(f"✅ Ordenado correctamente")
 
         # ========================================================================
         # CONVERTIR FECHAS DE VUELTA A STRING
@@ -360,13 +391,20 @@ def aplicar_prefiltrado():
         print("=" * 80)
         print(f"\n📊 Resultados:")
         print(f"  • Registros iniciales: {len(df_completo):,}")
-        print(f"  • Registros después de filtros: {len(df_filtrado_final):,}")
-        print(f"  • Reducción: {len(df_completo) - len(df_filtrado_final):,} registros ({((len(df_completo) - len(df_filtrado_final)) / len(df_completo) * 100):.1f}%)")
-        print(f"\n📋 Filtros aplicados:")
-        print(f"  1. fecha_ultima: {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}")
-        print(f"  2. IDs únicos extraídos: {len(ids_validos):,}")
-        print(f"  3. start_date mes: {primer_dia_mes.strftime('%B %Y')}")
-        print(f"  4. Ordenamiento: id_personal (↑), start_date (↓)")
+        print(f"  • Registros finales: {len(df_filtrado_final):,}")
+
+        if modo_sin_filtros:
+            print(f"\n📋 Procesamiento aplicado:")
+            print(f"  ✅ Modo: SIN FILTROS (procesado completo)")
+            print(f"  ✅ Ordenamiento: id_personal (↑), start_date (↓)")
+        else:
+            print(f"  • Reducción: {len(df_completo) - len(df_filtrado_final):,} registros ({((len(df_completo) - len(df_filtrado_final)) / len(df_completo) * 100):.1f}%)")
+            print(f"\n📋 Filtros aplicados:")
+            print(f"  1. fecha_ultima: {fecha_ultima_inicio.strftime('%d/%m/%Y')} → {fecha_ultima_fin.strftime('%d/%m/%Y')}")
+            print(f"  2. IDs únicos extraídos: {len(ids_validos):,}")
+            print(f"  3. start_date mes: {primer_dia_mes.strftime('%B %Y')}")
+            print(f"  4. Ordenamiento: id_personal (↑), start_date (↓)")
+
         print(f"\n✅ CSV listo para usar en auditoria_ausentismos_part4.py")
         print("=" * 80)
 
